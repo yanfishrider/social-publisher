@@ -1,0 +1,23 @@
+# 环境变量
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# 虚拟环境
+.venv/
+
+# 浏览器数据（含登录凭据，绝对不能上传）
+chromium-browser-data/
+edge-profile/
+
+# 测试输出
+test-results/
+output/
+
+# IDE
+.idea/
+.vscode/
+*.swp
