@@ -104,8 +104,7 @@ class ToutiaoPublisher:
         el = self.page.locator("textarea[placeholder*='标题']").first
         el.click()
         self.page.wait_for_timeout(300)
-        el.fill("")
-        el.type(title, delay=30)
+        el.fill(title)
         self.page.wait_for_timeout(500)
         print("  ✅")
     
