@@ -17,8 +17,10 @@ edge-profile/
 test-results/
 output/
 
-# 内容素材 — 均为从 PDF 生成的产物，不推送
-content/
+# 内容素材 — 除 hermes 宣传素材外不推送
+content/*
+!content/hermes-intro.md
+!content/hermes.png
 
 # IDE
 .idea/
