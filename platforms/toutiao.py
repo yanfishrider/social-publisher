@@ -26,7 +26,7 @@ class ToutiaoPublisher:
             };
         """)
         print("✅ 已连接 Edge + Shadow DOM 劫持")
-    
+
     def stop(self):
         if self._playwright:
             self._playwright.stop()
@@ -67,8 +67,11 @@ class ToutiaoPublisher:
             return False
         finally:
             if self.page:
-                self.page.wait_for_timeout(3000)
-                self.page.close()
+                try:
+                    self.page.wait_for_timeout(3000)
+                    self.page.close()
+                except Exception:
+                    pass
     
     def _check_login(self) -> bool:
         url = self.page.url

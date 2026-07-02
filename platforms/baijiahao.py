@@ -65,8 +65,11 @@ class BaijiahaoPublisher:
             return False
         finally:
             if self.page:
-                self.page.wait_for_timeout(3000)
-                self.page.close()
+                try:
+                    self.page.wait_for_timeout(3000)
+                    self.page.close()
+                except Exception:
+                    pass
     
     def _check_login(self) -> bool:
         url = self.page.url
@@ -100,23 +103,33 @@ class BaijiahaoPublisher:
         print("  ✅")
     
     # ── 2. 正文（UEditor iframe #ueditor_0）──
-    
+
     def _set_content(self, content: str):
         print(f"📄 正文 ({len(content)} 字)...")
-        
+
         # 正文在 UEditor iframe 内
         frame = self.page.frame_locator("#ueditor_0")
         body = frame.locator("body")
-        
+
         body.click()
         self.page.wait_for_timeout(500)
-        
-        for paragraph in content.split("\n"):
-            if paragraph.strip():
-                self.page.keyboard.type(paragraph, delay=10)
-                self.page.wait_for_timeout(200)
-                self.page.keyboard.press("Shift+Enter")
-                self.page.wait_for_timeout(100)
+
+        # 长文本用剪贴板粘贴，避免逐字键入超时
+        if len(content) > 1000:
+            import pyperclip
+            pyperclip.copy(content)
+            self.page.keyboard.press("Control+a")
+            self.page.wait_for_timeout(200)
+            self.page.keyboard.press("Control+v")
+            self.page.wait_for_timeout(1000)
+        else:
+            for paragraph in content.split("\n"):
+                if paragraph.strip():
+                    self.page.keyboard.type(paragraph, delay=10)
+                    self.page.wait_for_timeout(200)
+                    self.page.keyboard.press("Shift+Enter")
+                    self.page.wait_for_timeout(100)
+
         print("  ✅")
     
     # ── 3. 封面（必填，弹窗模式）──
