@@ -11,6 +11,7 @@
 | 小红书 (Xiaohongshu) | 图文笔记 | Medium | ✅ |
 | 百家号 (Baijiahao) | 长文 | High | ✅ |
 | 今日头条 (Toutiao) | 长文 | Very High | ✅ |
+| B站专栏 (Bilibili) | 专栏文章 | Medium | ✅ |
 | 搜狐号 (Sohu) | 长文 | Low | ⏳ 审核问题暂缓 |
 
 ## 前置条件

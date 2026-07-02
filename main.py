@@ -10,6 +10,7 @@ from image_utils import compress_image
 from platforms.xiaohongshu import XhsPublisher
 from platforms.baijiahao import BaijiahaoPublisher
 from platforms.toutiao import ToutiaoPublisher
+from platforms.bilibili import BilibiliPublisher
 from content_rewriter import rewrite_for_xhs, rewrite_for_article
 
 
@@ -122,6 +123,38 @@ def _publish_tt(config: PublishConfig, use_edge: bool):
     return success, config.title
 
 
+def _publish_bili(config: PublishConfig, use_edge: bool):
+    """发布 B 站专栏"""
+    content = config.content_loaded
+    bili_tags = list(config.tags)
+
+    if config.content_file and len(content) > 2000:
+        print("📝 Markdown 过长，自动转为纯文本段落...")
+        rewritten = rewrite_for_article(content)
+        content = rewritten["body"]
+        for t in rewritten["tags"]:
+            if t not in bili_tags:
+                bili_tags.append(t)
+        print(f"   正文: {len(content)}字 | 标签: {bili_tags}")
+
+    if use_edge:
+        pub = BilibiliPublisher()
+        pub.start()
+        success = pub.publish(config.title, content, bili_tags)
+        pub.stop()
+    else:
+        browser = BrowserManager(user_data_dir=config.browser_data_dir, headless=config.headless)
+        ctx = browser.start()
+        try:
+            pub = BilibiliPublisher()
+            pub.context = ctx
+            success = pub.publish(config.title, content, bili_tags)
+        finally:
+            browser.close()
+
+    return success, config.title
+
+
 def cmd_publish(args):
     platform = args.platform
     config = load_config_from_args(args)
@@ -135,7 +168,7 @@ def cmd_publish(args):
 
     platforms = [platform]
     if platform == "all":
-        platforms = ["xiaohongshu", "baijiahao", "toutiao"]
+        platforms = ["xiaohongshu", "baijiahao", "toutiao", "bilibili"]
 
     results = []
     for p in platforms:
@@ -149,6 +182,8 @@ def cmd_publish(args):
             ok, title = _publish_bjh(config, use_edge)
         elif p == "toutiao":
             ok, title = _publish_tt(config, use_edge)
+        elif p == "bilibili":
+            ok, title = _publish_bili(config, use_edge)
         else:
             print(f"❌ 未知平台: {p}"); sys.exit(1)
 
@@ -177,6 +212,8 @@ def cmd_login(args):
         page.goto("https://baijiahao.baidu.com/", timeout=30000)
     elif args.platform == "toutiao":
         page.goto("https://mp.toutiao.com/", timeout=30000)
+    elif args.platform == "bilibili":
+        page.goto("https://member.bilibili.com/platform/upload/text/new-edit", timeout=30000)
 
     page.wait_for_load_state("domcontentloaded")
     page.wait_for_timeout(3000)
@@ -191,7 +228,7 @@ def main():
     sub = parser.add_subparsers(dest="command")
 
     pub = sub.add_parser("publish")
-    pub.add_argument("platform", choices=["xiaohongshu", "baijiahao", "toutiao", "all"])
+    pub.add_argument("platform", choices=["xiaohongshu", "baijiahao", "toutiao", "bilibili", "all"])
     pub.add_argument("--title", required=True)
     pub.add_argument("--short-title")
     pub.add_argument("--cover-image")
@@ -204,7 +241,7 @@ def main():
     pub.add_argument("--use-edge", action="store_true", help="连接真实 Edge 浏览器（需先启动: msedge --remote-debugging-port=9222）")
 
     login = sub.add_parser("login")
-    login.add_argument("platform", choices=["xiaohongshu", "baijiahao", "toutiao"])
+    login.add_argument("platform", choices=["xiaohongshu", "baijiahao", "toutiao", "bilibili"])
     login.add_argument("--browser-data-dir", default="./chromium-browser-data")
 
     args = parser.parse_args()
