@@ -107,4 +107,8 @@ GitHub: https://github.com/nous-research/hermes-agent
 
 ---
 
+*本文基于 Hermes Agent 开源项目公开信息撰写。Hermes 为 Nous Research 商标。*
+
+---
+
 Hermes Agent 让 AI 从「会聊天」进化为「能干活」。开源、本地、可控——你的 AI，你做主。
