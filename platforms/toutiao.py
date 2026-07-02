@@ -221,26 +221,46 @@ class ToutiaoPublisher:
     def _wait_for_publish_result(self, timeout: int = 30000):
         print("⏳ 等待发布结果...")
         start = self.page.evaluate("Date.now()")
-        success_kw = ["发布成功", "提交成功", "审核中", "待审核"]
+        success_kw = ["发布成功", "提交成功", "审核中", "待审核", "已发布"]
         failure_kw = ["失败", "不符合", "重复", "错误", "异常"]
-        
+
         while self.page.evaluate("Date.now()") - start < timeout:
-            body_text = self.page.locator("body").inner_text()
-            
-            for kw in success_kw:
-                if kw in body_text:
-                    print(f"  ✅ 检测到: {kw}")
-                    try:
-                        self.page.wait_for_timeout(2000)
-                    except Exception:
-                        pass
+            try:
+                # 优先检查 toast 提示
+                toast = self.page.locator(".byte-toast, .byte-message, [class*='toast'], [class*='message']")
+                if toast.count() > 0:
+                    toast_text = toast.first.inner_text()
+                    for kw in success_kw:
+                        if kw in toast_text:
+                            print(f"  ✅ {toast_text.strip()}")
+                            return
+                    for kw in failure_kw:
+                        if kw in toast_text:
+                            raise Exception(f"发布被拒: {toast_text.strip()}")
+
+                # 检查页面 URL 是否已跳转离开编辑器（跳转 = 成功）
+                url = self.page.url
+                if "publish" not in url and "edit" not in url:
+                    print("  ✅ 已跳转至内容管理页，发布成功")
                     return
-            
-            for kw in failure_kw:
-                if kw in body_text:
-                    lines = [l for l in body_text.split("\n") if kw in l]
-                    raise Exception(f"发布被拒: {lines[0] if lines else kw}")
-            
+
+                # 兜底：检查 body 文本
+                body_text = self.page.locator("body").inner_text()
+                for kw in success_kw:
+                    if kw in body_text:
+                        print(f"  ✅ 检测到: {kw}")
+                        return
+                for kw in failure_kw:
+                    if kw in body_text:
+                        lines = [l for l in body_text.split("\n") if kw in l]
+                        raise Exception(f"发布被拒: {lines[0] if lines else kw}")
+            except Exception as e:
+                if "发布被拒" in str(e):
+                    raise
+                # 页面可能正在跳转，忽略临时错误
+                pass
+
             self.page.wait_for_timeout(1000)
-        
-        print("  ⚠️ 超时，请手动检查")
+
+        # 超时但没检测到失败 → 大概率成功（页面已跳转）
+        print("  ⚠️ 未检测到明确提示，请手动确认")
