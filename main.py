@@ -11,6 +11,8 @@ from platforms.xiaohongshu import XhsPublisher
 from platforms.baijiahao import BaijiahaoPublisher
 from platforms.toutiao import ToutiaoPublisher
 from platforms.bilibili import BilibiliPublisher
+from platforms.douyin import DouyinPublisher
+from platforms.weibo import WeiboPublisher
 from content_rewriter import rewrite_for_xhs, rewrite_for_article
 
 
@@ -155,6 +157,64 @@ def _publish_bili(config: PublishConfig, use_edge: bool):
     return success, config.title
 
 
+def _publish_dy(config: PublishConfig, use_edge: bool):
+    """发布抖音图文"""
+    if not config.cover_image:
+        print("❌ 抖音图文需要 --cover-image"); return False, config.title
+
+    content = config.content_loaded
+    dy_tags = list(config.tags)
+
+    # 抖音正文限制 ~1000字，内容过长时自动精简
+    if len(content) > 800:
+        print("📝 内容过长，自动精简...")
+        rewritten = rewrite_for_xhs(content, config.title)
+        content = rewritten["body"]
+        for t in rewritten["tags"]:
+            if t not in dy_tags:
+                dy_tags.append(t)
+        print(f"   正文: {len(content)}字 | 标签: {dy_tags}")
+
+    if use_edge:
+        pub = DouyinPublisher()
+        pub.start()
+        success = pub.publish(config.title, content, config.cover_image, dy_tags)
+        pub.stop()
+    else:
+        browser = BrowserManager(user_data_dir=config.browser_data_dir, headless=config.headless)
+        ctx = browser.start()
+        try:
+            pub = DouyinPublisher()
+            pub.context = ctx
+            success = pub.publish(config.title, content, config.cover_image, dy_tags)
+        finally:
+            browser.close()
+
+    return success, config.title
+
+
+def _publish_wb(config: PublishConfig, use_edge: bool):
+    """发布微博头条文章 — ProseMirror 支持 Markdown，直接传原始内容"""
+    content = config.content_loaded
+
+    if use_edge:
+        pub = WeiboPublisher()
+        pub.start()
+        success = pub.publish(config.title, content, config.cover_image, config.tags)
+        pub.stop()
+    else:
+        browser = BrowserManager(user_data_dir=config.browser_data_dir, headless=config.headless)
+        ctx = browser.start()
+        try:
+            pub = WeiboPublisher()
+            pub.context = ctx
+            success = pub.publish(config.title, content, config.cover_image, config.tags)
+        finally:
+            browser.close()
+
+    return success, config.title
+
+
 def cmd_publish(args):
     platform = args.platform
     config = load_config_from_args(args)
@@ -168,7 +228,7 @@ def cmd_publish(args):
 
     platforms = [platform]
     if platform == "all":
-        platforms = ["xiaohongshu", "baijiahao", "toutiao", "bilibili"]
+        platforms = ["xiaohongshu", "baijiahao", "toutiao", "bilibili", "douyin", "weibo"]
 
     results = []
     for p in platforms:
@@ -184,6 +244,10 @@ def cmd_publish(args):
             ok, title = _publish_tt(config, use_edge)
         elif p == "bilibili":
             ok, title = _publish_bili(config, use_edge)
+        elif p == "douyin":
+            ok, title = _publish_dy(config, use_edge)
+        elif p == "weibo":
+            ok, title = _publish_wb(config, use_edge)
         else:
             print(f"❌ 未知平台: {p}"); sys.exit(1)
 
@@ -214,6 +278,10 @@ def cmd_login(args):
         page.goto("https://mp.toutiao.com/", timeout=30000)
     elif args.platform == "bilibili":
         page.goto("https://member.bilibili.com/platform/upload/text/new-edit", timeout=30000)
+    elif args.platform == "douyin":
+        page.goto("https://creator.douyin.com/creator-micro/content/upload", timeout=30000)
+    elif args.platform == "weibo":
+        page.goto("https://weibo.com/", timeout=30000)
 
     page.wait_for_load_state("domcontentloaded")
     page.wait_for_timeout(3000)
@@ -228,7 +296,7 @@ def main():
     sub = parser.add_subparsers(dest="command")
 
     pub = sub.add_parser("publish")
-    pub.add_argument("platform", choices=["xiaohongshu", "baijiahao", "toutiao", "bilibili", "all"])
+    pub.add_argument("platform", choices=["xiaohongshu", "baijiahao", "toutiao", "bilibili", "douyin", "weibo", "all"])
     pub.add_argument("--title", required=True)
     pub.add_argument("--short-title")
     pub.add_argument("--cover-image")
@@ -241,7 +309,7 @@ def main():
     pub.add_argument("--use-edge", action="store_true", help="连接真实 Edge 浏览器（需先启动: msedge --remote-debugging-port=9222）")
 
     login = sub.add_parser("login")
-    login.add_argument("platform", choices=["xiaohongshu", "baijiahao", "toutiao", "bilibili"])
+    login.add_argument("platform", choices=["xiaohongshu", "baijiahao", "toutiao", "bilibili", "douyin", "weibo"])
     login.add_argument("--browser-data-dir", default="./chromium-browser-data")
 
     args = parser.parse_args()

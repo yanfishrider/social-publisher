@@ -1,12 +1,12 @@
 """
-B站专栏发布器 — 通过 CDP 连接真实 Edge 浏览器
-编辑器在 iframe 内（ProseMirror），封面自动生成无需上传
+抖音图文发布器 — 通过 CDP 连接真实 Edge 浏览器
+必须先上传图片才能进入编辑页，标题≤20字，正文~1000字
 """
-from playwright.sync_api import sync_playwright, BrowserContext, Page, Frame
+from playwright.sync_api import sync_playwright, BrowserContext, Page
 
 
-class BilibiliPublisher:
-    EDITOR_URL = "https://member.bilibili.com/platform/upload/text/new-edit"
+class DouyinPublisher:
+    UPLOAD_URL = "https://creator.douyin.com/creator-micro/content/upload"
     CDP_URL = "http://localhost:9222"
 
     def __init__(self):
@@ -31,23 +31,15 @@ class BilibiliPublisher:
         if self._playwright:
             self._playwright.stop()
 
-    @property
-    def _editor_frame(self) -> Frame:
-        """获取编辑器 iframe (name=116, url 包含 read-editor)"""
-        for f in self.page.frames:
-            if "read-editor" in f.url:
-                return f
-        raise RuntimeError("找不到编辑器 iframe")
-
-    def publish(self, title: str, content: str,
+    def publish(self, title: str, content: str, cover_image: str,
                 tags: list[str] | None = None) -> bool:
         if self.context is None:
             raise RuntimeError("未启动浏览器，先调 start() 或设置 context")
 
         try:
             self.page = self.context.new_page()
-            print("🌐 打开 B 站专栏编辑器...")
-            self.page.goto(self.EDITOR_URL, timeout=30000)
+            print("🌐 打开抖音创作页...")
+            self.page.goto(self.UPLOAD_URL, timeout=30000)
             self.page.wait_for_load_state("networkidle", timeout=30000)
             self.page.wait_for_timeout(3000)
 
@@ -55,10 +47,16 @@ class BilibiliPublisher:
                 print("⚠️ 未登录"); return False
             print("✅ 已登录")
 
+            # 1. 上传图片 → 进入编辑页
+            self._upload_image(cover_image)
+
+            # 2. 填写内容
             self._set_title(title)
             self._set_content(content)
             if tags:
                 self._set_tags(tags)
+
+            # 3. 发布
             self._submit()
 
             print("🎉 发布成功！")
@@ -75,11 +73,34 @@ class BilibiliPublisher:
                 except Exception:
                     pass
 
+    def _upload_image(self, image_path: str):
+        """上传图片并等待跳转到编辑页"""
+        print(f"🖼️ 上传: {image_path}")
+
+        # 点击"发布图文"tab
+        tab = self.page.locator(".tab-item-BcCLTS").nth(1)
+        tab.click()
+        self.page.wait_for_timeout(1000)
+
+        # 图片 input 是第二个 file input
+        self.page.locator("input[type='file']").nth(1).set_input_files(image_path)
+        self.page.wait_for_timeout(5000)
+
+        # 处理"上次未发布"草稿提示
+        discard = self.page.locator("text=放弃")
+        if discard.count() > 0:
+            discard.first.click()
+            self.page.wait_for_timeout(2000)
+
+        # 等待跳转到编辑页
+        self.page.wait_for_url("**/post/image**", timeout=30000)
+        self.page.wait_for_timeout(3000)
+        print("  ✅ 已进入编辑页")
+
     def _set_title(self, title: str):
-        title = title[:30]
+        title = title[:20]
         print(f"📝 标题: {title}")
-        frame = self._editor_frame
-        el = frame.locator("textarea[placeholder*='标题']").first
+        el = self.page.locator("input[placeholder='添加作品标题']").first
         el.click()
         self.page.wait_for_timeout(300)
         el.fill(title)
@@ -88,86 +109,64 @@ class BilibiliPublisher:
 
     def _set_content(self, content: str):
         print(f"📄 正文 ({len(content)} 字)...")
-        frame = self._editor_frame
-        editor = frame.locator(".tiptap.ProseMirror").first
+        editor = self.page.locator(".zone-container.editor-kit-container").first
         editor.click()
         self.page.wait_for_timeout(500)
 
-        # 长文本用剪贴板粘贴
-        if len(content) > 1000:
+        # 长文本剪贴板粘贴，短文本逐字键入
+        if len(content) > 500:
             import pyperclip
-            pyperclip.copy(content)
+            pyperclip.copy(content[:1000])  # 抖音限制~1000字
             self.page.keyboard.press("Control+a")
             self.page.wait_for_timeout(200)
             self.page.keyboard.press("Control+v")
             self.page.wait_for_timeout(1000)
         else:
-            for paragraph in content.split("\n"):
-                if paragraph.strip():
-                    self.page.keyboard.type(paragraph, delay=10)
-                    self.page.wait_for_timeout(200)
-                    self.page.keyboard.press("Shift+Enter")
-                    self.page.wait_for_timeout(100)
+            self.page.keyboard.type(content[:1000], delay=10)
+            self.page.wait_for_timeout(500)
         print("  ✅")
 
     def _set_tags(self, tags: list[str]):
         print(f"🏷️ 话题: {tags}")
-        frame = self._editor_frame
-
         for tag in tags:
-            # 点击"添加话题"
-            btn = frame.locator("button:has-text('添加话题')")
+            btn = self.page.locator("text=#添加话题").first
             if btn.count() == 0:
-                # 可能已经在发布设置面板中
-                btn = frame.locator("text=添加话题").first
-            if btn.count() == 0:
-                print("  ⚠️ 找不到添加话题按钮，跳过")
+                print("  ⚠️ 找不到话题入口，跳过")
                 break
-            btn.first.click()
+            btn.click()
             self.page.wait_for_timeout(1000)
 
             # 话题输入框
-            tag_input = frame.locator("input[placeholder*='话题']")
+            tag_input = self.page.locator("input[placeholder*='话题']")
             if tag_input.count() == 0:
-                # 可能是 contenteditable
-                tag_input = frame.locator("[contenteditable='true']").last
+                tag_input = self.page.locator("[contenteditable='true']").last
             if tag_input.count() > 0:
                 tag_input.first.fill(tag)
                 self.page.wait_for_timeout(500)
                 self.page.keyboard.press("Enter")
                 self.page.wait_for_timeout(500)
-            else:
-                print(f"  ⚠️ 话题输入框未找到")
         print("  ✅")
 
     def _submit(self):
         print("🚀 发布...")
-        frame = self._editor_frame
-
-        # 发布按钮: button.vui_button--blue
-        btn = frame.locator("button.vui_button--blue").first
+        btn = self.page.locator("button.button-dhlUZE.primary-cECiOJ").first
         if btn.count() == 0:
-            # 兜底：排除"设置""草稿"的发布按钮
-            btn = frame.locator(
-                "button:has-text('发布'):not(:has-text('设置')):not(:has-text('草稿'))"
-            ).first
+            btn = self.page.locator("button:has-text('发布')").first
         if btn.count() == 0:
             raise Exception("找不到发布按钮")
         print(f"  📌 点击: {btn.inner_text()}")
         btn.click()
         self.page.wait_for_timeout(3000)
 
-        # 检测发布结果
         self._wait_for_publish_result()
 
     def _wait_for_publish_result(self, timeout: int = 15000):
         print("⏳ 等待发布结果...")
         start = self.page.evaluate("Date.now()")
-        success_kw = ["发布成功", "提交成功", "审核中", "待审核", "已发布"]
+        success_kw = ["发布成功", "提交成功", "审核中", "已发布"]
 
         while self.page.evaluate("Date.now()") - start < timeout:
             try:
-                # toast 提示
                 toast = self.page.locator("[class*='toast'], [class*='message'], [class*='notice']")
                 if toast.count() > 0:
                     toast_text = toast.first.inner_text()
@@ -176,9 +175,8 @@ class BilibiliPublisher:
                             print(f"  ✅ {toast_text.strip()}")
                             return
 
-                # URL 跳转 = 成功
                 url = self.page.url
-                if "upload" not in url and "edit" not in url:
+                if "upload" not in url and "post/image" not in url:
                     print("  ✅ 已跳转，发布成功")
                     return
             except Exception:
