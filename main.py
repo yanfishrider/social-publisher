@@ -13,6 +13,115 @@ from platforms.toutiao import ToutiaoPublisher
 from content_rewriter import rewrite_for_xhs, rewrite_for_article
 
 
+def _publish_xhs(config: PublishConfig, use_edge: bool):
+    """发布小红书"""
+    content = config.content_loaded
+    xhs_tags = list(config.tags)
+    xhs_title = config.short_title or config.title
+
+    if config.content_file and len(content) > 500:
+        print("📝 内容过长，自动生成小红书风格文案...")
+        rewritten = rewrite_for_xhs(content, xhs_title)
+        xhs_title = rewritten["title"]
+        content = rewritten["body"]
+        for t in rewritten["tags"]:
+            if t not in xhs_tags:
+                xhs_tags.append(t)
+        print(f"   标题: {xhs_title}")
+        print(f"   正文: {len(content)}字 | 标签: {xhs_tags}")
+
+    if not config.cover_image:
+        print("❌ 缺少 --cover-image"); return False
+
+    cover_path = compress_image(config.cover_image, max_size_mb=5)
+    if not cover_path:
+        print("❌ 封面图处理失败"); return False
+
+    if use_edge:
+        pub = XhsPublisher()
+        pub.start()
+        success = pub.publish(xhs_title, content, cover_path, xhs_tags)
+        pub.stop()
+    else:
+        browser = BrowserManager(user_data_dir=config.browser_data_dir, headless=config.headless)
+        ctx = browser.start()
+        try:
+            pub = XhsPublisher()
+            pub.context = ctx
+            success = pub.publish(xhs_title, content, cover_path, xhs_tags)
+        finally:
+            browser.close()
+
+    return success, xhs_title
+
+
+def _publish_bjh(config: PublishConfig, use_edge: bool):
+    """发布百家号"""
+    if not config.cover_image:
+        print("❌ 百家号封面图为必填"); return False, config.title
+
+    content = config.content_loaded
+    bjh_tags = list(config.tags)
+
+    if config.content_file and len(content) > 2000:
+        print("📝 Markdown 过长，自动转为纯文本段落...")
+        rewritten = rewrite_for_article(content)
+        content = rewritten["body"]
+        for t in rewritten["tags"]:
+            if t not in bjh_tags:
+                bjh_tags.append(t)
+        print(f"   正文: {len(content)}字 | 标签: {bjh_tags}")
+
+    if use_edge:
+        pub = BaijiahaoPublisher()
+        pub.start()
+        success = pub.publish(config.title, content, config.cover_image, bjh_tags)
+        pub.stop()
+    else:
+        browser = BrowserManager(user_data_dir=config.browser_data_dir, headless=config.headless)
+        ctx = browser.start()
+        try:
+            pub = BaijiahaoPublisher()
+            pub.context = ctx
+            success = pub.publish(config.title, content, config.cover_image, bjh_tags)
+        finally:
+            browser.close()
+
+    return success, config.title
+
+
+def _publish_tt(config: PublishConfig, use_edge: bool):
+    """发布头条号"""
+    content = config.content_loaded
+    tt_tags = list(config.tags)
+
+    if config.content_file and len(content) > 2000:
+        print("📝 Markdown 过长，自动转为纯文本段落...")
+        rewritten = rewrite_for_article(content)
+        content = rewritten["body"]
+        for t in rewritten["tags"]:
+            if t not in tt_tags:
+                tt_tags.append(t)
+        print(f"   正文: {len(content)}字 | 标签: {tt_tags}")
+
+    if use_edge:
+        pub = ToutiaoPublisher()
+        pub.start()
+        success = pub.publish(config.title, content, config.cover_image, tt_tags)
+        pub.stop()
+    else:
+        browser = BrowserManager(user_data_dir=config.browser_data_dir, headless=config.headless)
+        ctx = browser.start()
+        try:
+            pub = ToutiaoPublisher()
+            pub.context = ctx
+            success = pub.publish(config.title, content, config.cover_image, tt_tags)
+        finally:
+            browser.close()
+
+    return success, config.title
+
+
 def cmd_publish(args):
     platform = args.platform
     config = load_config_from_args(args)
@@ -24,138 +133,35 @@ def cmd_publish(args):
 
     use_edge = getattr(args, 'use_edge', False)
 
-    if platform == "xiaohongshu":
-        # 自动改写：内容 >500 字时提取精华
-        content = config.content_loaded
-        xhs_tags = list(config.tags)
-        xhs_title = config.short_title or config.title
+    platforms = [platform]
+    if platform == "all":
+        platforms = ["xiaohongshu", "baijiahao", "toutiao"]
 
-        if config.content_file and len(content) > 500:
-            print("📝 内容过长，自动生成小红书风格文案...")
-            rewritten = rewrite_for_xhs(content, xhs_title)
-            xhs_title = rewritten["title"]
-            content = rewritten["body"]
-            # 合并标签
-            for t in rewritten["tags"]:
-                if t not in xhs_tags:
-                    xhs_tags.append(t)
-            print(f"   标题: {xhs_title}")
-            print(f"   正文: {len(content)}字 | 标签: {xhs_tags}")
+    results = []
+    for p in platforms:
+        print(f"\n{'='*60}")
+        print(f"📤 发布到 {p}")
+        print(f"{'='*60}")
 
-        if not config.cover_image:
-            print("❌ 缺少 --cover-image"); sys.exit(1)
-
-        cover_path = compress_image(config.cover_image, max_size_mb=5)
-        if not cover_path:
-            print("❌ 封面图处理失败"); sys.exit(1)
-
-        if use_edge:
-            pub = XhsPublisher()
-            pub.start()
-            success = pub.publish(xhs_title, content, cover_path, xhs_tags)
-            pub.stop()
+        if p == "xiaohongshu":
+            ok, title = _publish_xhs(config, use_edge)
+        elif p == "baijiahao":
+            ok, title = _publish_bjh(config, use_edge)
+        elif p == "toutiao":
+            ok, title = _publish_tt(config, use_edge)
         else:
-            browser = BrowserManager(user_data_dir=config.browser_data_dir, headless=config.headless)
-            ctx = browser.start()
-            try:
-                pub = XhsPublisher()
-                pub.context = ctx
-                success = pub.publish(xhs_title, content, cover_path, xhs_tags)
-            finally:
-                browser.close()
+            print(f"❌ 未知平台: {p}"); sys.exit(1)
 
-        disp_title = xhs_title
+        tag = "✅" if ok else "❌"
+        results.append(f"  {tag} {p}: {title}")
 
-    elif platform == "baijiahao":
-        if not config.cover_image:
-            print("❌ 百家号封面图为必填，缺少 --cover-image"); sys.exit(1)
+    print(f"\n{'='*60}")
+    print("📊 发布汇总")
+    print(f"{'='*60}")
+    for r in results:
+        print(r)
 
-        content = config.content_loaded
-        bjh_tags = list(config.tags)
-
-        if config.content_file and len(content) > 2000:
-            print("📝 Markdown 过长，自动转为纯文本段落...")
-            rewritten = rewrite_for_article(content)
-            content = rewritten["body"]
-            for t in rewritten["tags"]:
-                if t not in bjh_tags:
-                    bjh_tags.append(t)
-            print(f"   正文: {len(content)}字 | 标签: {bjh_tags}")
-
-        if use_edge:
-            pub = BaijiahaoPublisher()
-            pub.start()
-            success = pub.publish(
-                title=config.title,
-                content=content,
-                cover_image=config.cover_image,
-                tags=bjh_tags,
-            )
-            pub.stop()
-        else:
-            browser = BrowserManager(user_data_dir=config.browser_data_dir, headless=config.headless)
-            ctx = browser.start()
-            try:
-                pub = BaijiahaoPublisher()
-                pub.context = ctx
-                success = pub.publish(
-                    title=config.title,
-                    content=content,
-                    cover_image=config.cover_image,
-                    tags=bjh_tags,
-                )
-            finally:
-                browser.close()
-
-        disp_title = config.title
-
-    elif platform == "toutiao":
-        content = config.content_loaded
-        tt_tags = list(config.tags)
-
-        if config.content_file and len(content) > 2000:
-            print("📝 Markdown 过长，自动转为纯文本段落...")
-            rewritten = rewrite_for_article(content)
-            content = rewritten["body"]
-            for t in rewritten["tags"]:
-                if t not in tt_tags:
-                    tt_tags.append(t)
-            print(f"   正文: {len(content)}字 | 标签: {tt_tags}")
-
-        if use_edge:
-            pub = ToutiaoPublisher()
-            pub.start()
-            success = pub.publish(
-                title=config.title,
-                content=content,
-                cover_image=config.cover_image,
-                tags=tt_tags,
-            )
-            pub.stop()
-        else:
-            browser = BrowserManager(user_data_dir=config.browser_data_dir, headless=config.headless)
-            ctx = browser.start()
-            try:
-                pub = ToutiaoPublisher()
-                pub.context = ctx
-                success = pub.publish(
-                    title=config.title,
-                    content=content,
-                    cover_image=config.cover_image,
-                    tags=tt_tags,
-                )
-            finally:
-                browser.close()
-
-        disp_title = config.title
-
-    else:
-        print(f"❌ 未知平台: {platform}"); sys.exit(1)
-
-    if success:
-        print(f"\n{'='*60}\n🎉 发布完成！\n   标题: {disp_title}\n{'='*60}")
-    else:
-        print("\n❌ 发布失败")
+    if not any("✅" in r for r in results):
         sys.exit(1)
 
 
@@ -185,7 +191,7 @@ def main():
     sub = parser.add_subparsers(dest="command")
 
     pub = sub.add_parser("publish")
-    pub.add_argument("platform", choices=["xiaohongshu", "baijiahao", "toutiao"])
+    pub.add_argument("platform", choices=["xiaohongshu", "baijiahao", "toutiao", "all"])
     pub.add_argument("--title", required=True)
     pub.add_argument("--short-title")
     pub.add_argument("--cover-image")

@@ -186,18 +186,28 @@ class ToutiaoPublisher:
     def _submit(self):
         print("🚀 提交发布...")
         self.page.wait_for_timeout(1000)
-        
+
         # 第一步：点击 "预览并发布"
         btn = self.page.locator(".byte-btn-primary:has-text('预览并发布')")
         if btn.count() == 0:
             raise Exception("找不到发布按钮")
         btn.first.click()
-        self.page.wait_for_timeout(3000)
         print("  ✅ 已点击预览并发布")
-        
-        # 第二步：等待二次确认弹窗出现
-        # 弹窗内通常有 "确认发布" 或 "发布" 按钮
-        confirm_btn = self.page.locator("button:has-text('确认发布'), button:has-text('发布')").first
+
+        # 等待手机预览图出现 + 按钮变为 "发布"
+        self.page.wait_for_timeout(3000)
+
+        # 第二步：原位置按钮已变成 "发布"，再次点击
+        # 优先精确匹配 "发布"（不包含"预览"的发布按钮）
+        confirm_btn = self.page.locator(
+            ".byte-btn-primary:has-text('发布'):not(:has-text('预览'))"
+        )
+        if confirm_btn.count() == 0:
+            # 兜底：找任何可见的 "发布" 或 "确认发布"
+            confirm_btn = self.page.locator(
+                "button:has-text('确认发布'), button:has-text('发布')"
+            ).first
+
         confirm_btn.wait_for(state="visible", timeout=15000)
         confirm_btn.click()
         try:
@@ -205,7 +215,7 @@ class ToutiaoPublisher:
         except Exception:
             pass
         print("  ✅ 已确认发布")
-        
+
         self._wait_for_publish_result()
     
     def _wait_for_publish_result(self, timeout: int = 30000):

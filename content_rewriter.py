@@ -134,16 +134,38 @@ def _build_xhs_body(sections: list[dict]) -> str:
 
 def _xhs_title(base_title: str, sections: list[dict]) -> str:
     """生成 <=20 字短标题"""
-    if base_title and len(base_title) <= 20:
-        return base_title
+    # 用传入标题，过长则智能截断
+    if base_title:
+        if len(base_title) <= 20:
+            return base_title
+        # 在破折号/空格处截断
+        return _smart_cut(base_title, 20)
+
+    # 无传入标题，从正文提取
     for s in sections:
-        if "简介" in s["heading"] and s["body"]:
+        if s["body"]:
             first = s["body"].split("。")[0].strip()
             if 5 <= len(first) <= 20:
                 return first
             if len(first) > 20:
-                return first[:19] + "…"
-    return "曼大优学 K12升学专家"
+                return _smart_cut(first, 20)
+
+    # 最后兜底：取第一个 section 的标题
+    if sections:
+        heading = sections[0]["heading"]
+        return heading[:20] if len(heading) > 20 else heading
+
+    return "本地AI助手"
+
+
+def _smart_cut(text: str, limit: int) -> str:
+    """智能截断：在标点/空格处断，不截半个词"""
+    cut = text[:limit]
+    for sep in [" — ", " - ", "，", "。", "、", " "]:
+        idx = cut.rfind(sep)
+        if idx > limit // 2:
+            return cut[:idx]
+    return cut
 
 
 # ── 百家号 / 头条号 改写 ──────────────────────────────
