@@ -122,7 +122,7 @@ class DouyinPublisher:
             self.page.keyboard.press("Control+v")
             self.page.wait_for_timeout(1000)
         else:
-            self.page.keyboard.type(content[:1000], delay=10)
+            self.page.keyboard.type(content[:1000], delay=30)
             self.page.wait_for_timeout(500)
         print("  ✅")
 

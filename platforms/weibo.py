@@ -177,13 +177,6 @@ class WeiboPublisher:
 
         print("  ✅ 封面已设置")
 
-        # 强制关闭所有弹窗
-        self.page.evaluate("""
-            document.querySelectorAll('.n-modal-mask').forEach(m => m.style.display = 'none');
-            document.querySelectorAll('.n-modal-container').forEach(m => m.style.display = 'none');
-        """)
-        self.page.wait_for_timeout(1000)
-
     def _submit(self):
         print("🚀 发布...")
 

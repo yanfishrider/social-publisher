@@ -101,7 +101,8 @@ def _parse_sections(text: str) -> list[dict]:
 
 def _build_xhs_body(sections: list[dict]) -> str:
     """拼装小红书正文（无 emoji，纯文字短段落）"""
-    priority_keywords = ["简介", "优势", "上岸", "师资", "培养", "课程", "校区"]
+    priority_keywords = ["简介", "优势", "上岸", "师资", "培养", "课程", "校区",
+                         "背景", "评分", "测评", "服务", "人群", "推荐", "核心"]
     selected = []
     for kw in priority_keywords:
         for s in sections:

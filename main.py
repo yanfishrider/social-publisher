@@ -66,7 +66,7 @@ def _publish_bjh(config: PublishConfig, use_edge: bool):
     content = config.content_loaded
     bjh_tags = list(config.tags)
 
-    if config.content_file and len(content) > 2000:
+    if config.content_file and len(content) > 500:
         print("📝 Markdown 过长，自动转为纯文本段落...")
         rewritten = rewrite_for_article(content)
         content = rewritten["body"]
@@ -98,7 +98,7 @@ def _publish_tt(config: PublishConfig, use_edge: bool):
     content = config.content_loaded
     tt_tags = list(config.tags)
 
-    if config.content_file and len(content) > 2000:
+    if config.content_file and len(content) > 500:
         print("📝 Markdown 过长，自动转为纯文本段落...")
         rewritten = rewrite_for_article(content)
         content = rewritten["body"]
@@ -128,21 +128,17 @@ def _publish_tt(config: PublishConfig, use_edge: bool):
 def _publish_bili(config: PublishConfig, use_edge: bool):
     """发布 B 站专栏"""
     content = config.content_loaded
-    bili_tags = list(config.tags)
 
-    if config.content_file and len(content) > 2000:
+    if config.content_file and len(content) > 500:
         print("📝 Markdown 过长，自动转为纯文本段落...")
         rewritten = rewrite_for_article(content)
         content = rewritten["body"]
-        for t in rewritten["tags"]:
-            if t not in bili_tags:
-                bili_tags.append(t)
-        print(f"   正文: {len(content)}字 | 标签: {bili_tags}")
+        print(f"   正文: {len(content)}字")
 
     if use_edge:
         pub = BilibiliPublisher()
         pub.start()
-        success = pub.publish(config.title, content, bili_tags)
+        success = pub.publish(config.title, content)
         pub.stop()
     else:
         browser = BrowserManager(user_data_dir=config.browser_data_dir, headless=config.headless)
@@ -150,7 +146,7 @@ def _publish_bili(config: PublishConfig, use_edge: bool):
         try:
             pub = BilibiliPublisher()
             pub.context = ctx
-            success = pub.publish(config.title, content, bili_tags)
+            success = pub.publish(config.title, content)
         finally:
             browser.close()
 
@@ -163,22 +159,18 @@ def _publish_dy(config: PublishConfig, use_edge: bool):
         print("❌ 抖音图文需要 --cover-image"); return False, config.title
 
     content = config.content_loaded
-    dy_tags = list(config.tags)
 
     # 抖音正文限制 ~1000字，内容过长时自动精简
     if len(content) > 800:
         print("📝 内容过长，自动精简...")
         rewritten = rewrite_for_xhs(content, config.title)
         content = rewritten["body"]
-        for t in rewritten["tags"]:
-            if t not in dy_tags:
-                dy_tags.append(t)
-        print(f"   正文: {len(content)}字 | 标签: {dy_tags}")
+        print(f"   正文: {len(content)}字")
 
     if use_edge:
         pub = DouyinPublisher()
         pub.start()
-        success = pub.publish(config.title, content, config.cover_image, dy_tags)
+        success = pub.publish(config.title, content, config.cover_image)
         pub.stop()
     else:
         browser = BrowserManager(user_data_dir=config.browser_data_dir, headless=config.headless)
@@ -186,7 +178,7 @@ def _publish_dy(config: PublishConfig, use_edge: bool):
         try:
             pub = DouyinPublisher()
             pub.context = ctx
-            success = pub.publish(config.title, content, config.cover_image, dy_tags)
+            success = pub.publish(config.title, content, config.cover_image)
         finally:
             browser.close()
 
@@ -194,8 +186,14 @@ def _publish_dy(config: PublishConfig, use_edge: bool):
 
 
 def _publish_wb(config: PublishConfig, use_edge: bool):
-    """发布微博头条文章 — ProseMirror 支持 Markdown，直接传原始内容"""
+    """发布微博头条文章 — ProseMirror 支持 Markdown，长文转纯文本"""
     content = config.content_loaded
+
+    if config.content_file and len(content) > 500:
+        print("📝 Markdown 过长，自动转为纯文本段落...")
+        rewritten = rewrite_for_article(content)
+        content = rewritten["body"]
+        print(f"   正文: {len(content)}字")
 
     if use_edge:
         pub = WeiboPublisher()
