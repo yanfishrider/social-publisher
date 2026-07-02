@@ -194,21 +194,33 @@ class ToutiaoPublisher:
         btn.first.click()
         print("  ✅ 已点击预览并发布")
 
-        # 等待手机预览图出现 + 按钮变为 "发布"
-        self.page.wait_for_timeout(3000)
-
-        # 第二步：原位置按钮已变成 "发布"，再次点击
-        # 优先精确匹配 "发布"（不包含"预览"的发布按钮）
+        # 等待按钮从 "预览并发布" 变为 "确认发布"
+        # 用 while 轮询直到按钮文字变化（最多等 15 秒）
         confirm_btn = self.page.locator(
-            ".byte-btn-primary:has-text('发布'):not(:has-text('预览'))"
-        )
-        if confirm_btn.count() == 0:
-            # 兜底：找任何可见的 "发布" 或 "确认发布"
+            ".byte-btn-primary.publish-btn-last span"
+        ).first
+        elapsed = 0
+        while elapsed < 15000:
+            try:
+                text = confirm_btn.inner_text()
+            except Exception:
+                text = ""
+            if "确认" in text or ("发布" in text and "预览" not in text):
+                break
+            self.page.wait_for_timeout(500)
+            elapsed += 500
+        else:
+            # 兜底：还是用原来的选择器
             confirm_btn = self.page.locator(
-                "button:has-text('确认发布'), button:has-text('发布')"
+                ".byte-btn-primary:has-text('发布'):not(:has-text('预览'))"
             ).first
+            if confirm_btn.count() == 0:
+                confirm_btn = self.page.locator(
+                    "button:has-text('确认发布')"
+                ).first
+            confirm_btn.wait_for(state="visible", timeout=5000)
 
-        confirm_btn.wait_for(state="visible", timeout=15000)
+        print(f"  📌 检测到按钮: {confirm_btn.inner_text()}")
         confirm_btn.click()
         try:
             self.page.wait_for_timeout(2000)
