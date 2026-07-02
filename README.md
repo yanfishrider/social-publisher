@@ -12,6 +12,8 @@
 | 百家号 (Baijiahao) | 长文 | High | ✅ |
 | 今日头条 (Toutiao) | 长文 | Very High | ✅ |
 | B站专栏 (Bilibili) | 专栏文章 | Medium | ✅ |
+| 抖音 (Douyin) | 图文 | High | ✅ |
+| 微博 (Weibo) | 头条文章 | Medium | ✅ |
 | 搜狐号 (Sohu) | 长文 | Low | ⏳ 审核问题暂缓 |
 
 ## 前置条件
@@ -34,9 +36,12 @@ uv sync
 uv run python main.py login xiaohongshu
 uv run python main.py login baijiahao
 uv run python main.py login toutiao
+uv run python main.py login bilibili
+uv run python main.py login douyin
+uv run python main.py login weibo
 # 登录完成后按 Enter 关闭
 
-# 4. 发布内容（使用 CDP 连接模式，--use-edge 绕过反爬）
+# 4. 发布内容（使用 --use-edge 通过 CDP 连接绕过反爬）
 # 小红书（封面图必填，标题 ≤20 字）
 uv run python main.py publish xiaohongshu \
   --title "完整标题" --short-title "短标题" \
@@ -52,6 +57,26 @@ uv run python main.py publish baijiahao \
 uv run python main.py publish toutiao \
   --title "文章标题" --content-file ./article.md \
   --cover-image ./cover.png --use-edge
+
+# B 站专栏（封面图自动生成，标题 ≤64 字）
+uv run python main.py publish bilibili \
+  --title "专栏标题" --content-file ./article.md --use-edge
+
+# 抖音图文（封面图必填）
+uv run python main.py publish douyin \
+  --title "图文标题" --content-file ./article.md \
+  --cover-image ./cover.png --use-edge
+
+# 微博头条文章（封面图选填）
+uv run python main.py publish weibo \
+  --title "文章标题" --content-file ./article.md \
+  --cover-image ./cover.png --tags "标签1,标签2" --use-edge
+
+# 一键全平台发布
+uv run python main.py publish all \
+  --title "文章标题" --short-title "短标题" \
+  --content-file ./article.md --cover-image ./cover.png \
+  --tags "标签1,标签2" --use-edge
 ```
 
 ## PDF → 多平台发布 完整流程
@@ -80,22 +105,21 @@ PDF 分为两种类型：
 
 | 平台 | 内容处理 | 触发条件 |
 |------|----------|----------|
-| 小红书 | `content_rewriter.py` 精简为 ~800 字短文案 | --content-file 且 >500 字 |
-| 百家号 | `content_rewriter.py` 转为纯文本段落 | --content-file 且 >2000 字 |
-| 头条号 | `content_rewriter.py` 转为纯文本段落 | --content-file 且 >2000 字 |
+| 小红书 | `content_rewriter.py` 精简为 ~800 字短文案 | >500 字 |
+| 百家号 | `content_rewriter.py` 转为纯文本段落 | >500 字 |
+| 头条号 | `content_rewriter.py` 转为纯文本段落 | >500 字 |
+| B站专栏 | `content_rewriter.py` 转为纯文本段落 | >500 字 |
+| 抖音图文 | `content_rewriter.py` 精简为短文案 | >800 字 |
+| 微博头条 | `content_rewriter.py` 转为纯文本段落 | >500 字 |
 
 使用 `--content-text` 直传短文本则跳过自动改写。
 
 ```bash
-# 三平台一键发布（使用同一份 content/*.md）
-uv run python main.py publish xiaohongshu --use-edge \
-  --title "标题" --content-file content/xxx.md --cover-image content/xxx.png
-
-uv run python main.py publish baijiahao --use-edge \
-  --title "标题" --content-file content/xxx.md --cover-image content/xxx.png
-
-uv run python main.py publish toutiao --use-edge \
-  --title "标题" --content-file content/xxx.md --cover-image content/xxx.png
+# 六平台一键发布（使用同一份 content/*.md）
+uv run python main.py publish all --use-edge \
+  --title "标题" --short-title "短标题" \
+  --content-file content/xxx.md --cover-image content/xxx.png \
+  --tags "标签1,标签2"
 ```
 
 ## 项目结构
@@ -107,6 +131,7 @@ social-publisher/
 ├── browser_manager.py       # 浏览器生命周期管理
 ├── image_utils.py           # PIL 图片压缩
 ├── pdf_to_markdown.py       # PDF → Markdown 转换工具
+├── docx_to_markdown.py      # DOCX → Markdown 转换工具
 ├── content_rewriter.py      # 内容改写（适配各平台格式）
 ├── content/                 # 内容素材（从 PDF 生成，不推送）
 │   ├── xxx.md               #   从 PDF 提取的 Markdown
@@ -114,11 +139,25 @@ social-publisher/
 ├── platforms/
 │   ├── xiaohongshu.py       # 小红书发布器
 │   ├── baijiahao.py         # 百家号发布器
-│   └── toutiao.py           # 今日头条发布器
+│   ├── toutiao.py           # 今日头条发布器
+│   ├── bilibili.py          # B站专栏发布器
+│   ├── douyin.py            # 抖音图文发布器
+│   └── weibo.py             # 微博头条文章发布器
 ├── pyproject.toml           # 项目元数据 + 依赖
 ├── .env.example             # 环境变量模板
 └── README.md
 ```
+
+## 平台特性
+
+| 平台 | 编辑器 | 特殊处理 |
+|------|--------|----------|
+| 小红书 | 标准 textarea | Shadow DOM 劫持 |
+| 百家号 | contenteditable div | >1000 字自动切剪贴板粘贴 |
+| 今日头条 | Vditor Markdown 编辑器 | 标题用 fill() 防丢字 |
+| B站专栏 | contenteditable div | 不支持 tags（#号弹窗自动关闭） |
+| 抖音 | contenteditable div | 键入延迟 30ms 防漏字；不支持 tags |
+| 微博 | ProseMirror 富文本 | 支持 Markdown 语法 |
 
 ## 自动化程度
 
@@ -127,6 +166,7 @@ social-publisher/
 | PDF 诊断 | ✅ 自动 | `pdf_to_markdown.py --diagnose` |
 | 文字型 PDF 提取 | ✅ 自动 | `pymupdf4llm` 直接转换 |
 | 转曲 PDF 提取 | ❌ 需 Hermes AI | vision 逐页读图，需 AI 参与 |
+| DOCX 提取 | ✅ 自动 | `docx_to_markdown.py` |
 | Markdown → 各平台文案 | ✅ 自动 | `content_rewriter.py` |
 | 发布到各平台 | ✅ 自动 | Playwright + CDP |
 
@@ -147,6 +187,7 @@ pub.stop()
 - **持久化上下文**：`launch_persistent_context` 保存登录态
 - **平台差异**：各平台 DOM/流程不同，独立维护选择器
 - **长文本优化**：百家号 >1000 字自动切换剪贴板粘贴，避免逐字键入超时
+- **`all` 命令**：一键同步发布到全部 6 个平台
 
 ## 安全警告
 
