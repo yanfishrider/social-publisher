@@ -91,7 +91,16 @@ class XhsPublisher:
         print("  ✅")
 
     def _set_title(self, title):
-        title = title[:20]
+        if len(title) > 20:
+            # 智能截断：在空格/标点处断，不截半个词
+            cut = title[:20]
+            # 回退到最后一个合适的断点
+            for sep in [" — ", " - ", " ", "，", "。", "、"]:
+                idx = cut.rfind(sep)
+                if idx > 10:  # 至少保留10个字
+                    cut = cut[:idx]
+                    break
+            title = cut
         print(f"📝 标题: {title}")
         self.page.locator("[placeholder*='标题']").first.fill(title)
         self.page.wait_for_timeout(500)

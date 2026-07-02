@@ -28,7 +28,7 @@ def cmd_publish(args):
         # 自动改写：内容 >500 字时提取精华
         content = config.content_loaded
         xhs_tags = list(config.tags)
-        xhs_title = config.short_title or config.title[:20]
+        xhs_title = config.short_title or config.title
 
         if config.content_file and len(content) > 500:
             print("📝 内容过长，自动生成小红书风格文案...")

@@ -91,7 +91,14 @@ class ToutiaoPublisher:
     # ── 1. 标题（textarea，最多 30 字）──
     
     def _set_title(self, title: str):
-        title = title[:30]
+        if len(title) > 30:
+            cut = title[:30]
+            for sep in [" — ", " - ", "，", "。", "、", " "]:
+                idx = cut.rfind(sep)
+                if idx > 15:
+                    cut = cut[:idx]
+                    break
+            title = cut
         print(f"📝 标题: {title}")
         
         el = self.page.locator("textarea[placeholder*='标题']").first
