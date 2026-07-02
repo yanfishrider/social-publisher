@@ -106,17 +106,27 @@ class ToutiaoPublisher:
     
     def _set_content(self, content: str):
         print(f"📄 正文 ({len(content)} 字)...")
-        
+
         editor = self.page.locator(".ProseMirror").first
         editor.click()
         self.page.wait_for_timeout(500)
-        
-        for paragraph in content.split("\n"):
-            if paragraph.strip():
-                self.page.keyboard.type(paragraph, delay=10)
-                self.page.wait_for_timeout(200)
-                self.page.keyboard.press("Shift+Enter")
-                self.page.wait_for_timeout(100)
+
+        # 长文本用剪贴板粘贴，避免逐字键入超时
+        if len(content) > 1000:
+            import pyperclip
+            pyperclip.copy(content)
+            self.page.keyboard.press("Control+a")
+            self.page.wait_for_timeout(200)
+            self.page.keyboard.press("Control+v")
+            self.page.wait_for_timeout(1000)
+        else:
+            for paragraph in content.split("\n"):
+                if paragraph.strip():
+                    self.page.keyboard.type(paragraph, delay=10)
+                    self.page.wait_for_timeout(200)
+                    self.page.keyboard.press("Shift+Enter")
+                    self.page.wait_for_timeout(100)
+
         print("  ✅")
     
     # ── 3. 封面（选填，单图/三图/无封面）──
@@ -183,7 +193,10 @@ class ToutiaoPublisher:
         confirm_btn = self.page.locator("button:has-text('确认发布'), button:has-text('发布')").first
         confirm_btn.wait_for(state="visible", timeout=15000)
         confirm_btn.click()
-        self.page.wait_for_timeout(2000)
+        try:
+            self.page.wait_for_timeout(2000)
+        except Exception:
+            pass
         print("  ✅ 已确认发布")
         
         self._wait_for_publish_result()
@@ -200,7 +213,10 @@ class ToutiaoPublisher:
             for kw in success_kw:
                 if kw in body_text:
                     print(f"  ✅ 检测到: {kw}")
-                    self.page.wait_for_timeout(2000)
+                    try:
+                        self.page.wait_for_timeout(2000)
+                    except Exception:
+                        pass
                     return
             
             for kw in failure_kw:
