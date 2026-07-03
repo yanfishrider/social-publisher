@@ -113,18 +113,19 @@ class DouyinPublisher:
         editor.click()
         self.page.wait_for_timeout(500)
 
-        # 长文本剪贴板粘贴，短文本逐字键入
-        if len(content) > 500:
-            import pyperclip
-            pyperclip.copy(content[:1000])  # 抖音限制~1000字
-            self.page.keyboard.press("Control+a")
-            self.page.wait_for_timeout(200)
-            self.page.keyboard.press("Control+v")
-            self.page.wait_for_timeout(1000)
-        else:
-            self.page.keyboard.type(content[:1000], delay=30)
-            self.page.wait_for_timeout(500)
-        print("  ✅")
+        # 逐字输入模拟真人打字 (抖音限制~1000字)
+        text = content[:1000]
+        paragraphs = [p for p in text.split("\n") if p.strip()]
+        total = len(paragraphs)
+        for i, paragraph in enumerate(paragraphs):
+            self.page.keyboard.type(paragraph, delay=60)
+            if i < total - 1:
+                self.page.wait_for_timeout(300)
+                self.page.keyboard.press("Shift+Enter")
+                self.page.wait_for_timeout(200)
+            if (i + 1) % 5 == 0:
+                self.page.wait_for_timeout(800)
+        print(f"  ✅ 输入完成")
 
     def _set_tags(self, tags: list[str]):
         print(f"🏷️ 话题: {tags}")

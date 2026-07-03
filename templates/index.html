@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>社交发布工具</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: -apple-system, "Microsoft YaHei", sans-serif; background:#f5f5f5; color:#333; }
+.container { max-width:800px; margin:0 auto; padding:20px; }
+h1 { font-size:22px; margin-bottom:20px; color:#1a1a1a; }
+
+.card {
+  background:#fff; border-radius:8px; padding:20px; margin-bottom:16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+.platform-group { display:flex; flex-wrap:wrap; gap:10px; }
+.platform-group label {
+  display:flex; align-items:center; gap:6px;
+  padding:6px 14px; border:1px solid #ddd; border-radius:6px;
+  cursor:pointer; font-size:14px; transition:all 0.2s;
+}
+.platform-group label:hover { border-color:#1890ff; }
+.platform-group input:checked + span { color:#1890ff; font-weight:600; }
+.platform-group label:has(input:checked) { border-color:#1890ff; background:#e6f7ff; }
+
+.form-row { margin-bottom:14px; }
+.form-row label { display:block; font-size:13px; color:#666; margin-bottom:4px; }
+.form-row input[type="text"], .form-row textarea {
+  width:100%; padding:8px 12px; border:1px solid #ddd; border-radius:6px;
+  font-size:14px; outline:none; transition:border 0.2s;
+}
+.form-row input:focus, .form-row textarea:focus { border-color:#1890ff; }
+.form-row textarea { resize:vertical; min-height:120px; }
+.form-row input[type="file"] { font-size:13px; }
+.form-row .hint { font-size:12px; color:#999; margin-top:2px; }
+
+.actions { display:flex; gap:10px; margin-top:8px; }
+.btn {
+  padding:10px 24px; border:none; border-radius:6px; font-size:14px;
+  cursor:pointer; transition:all 0.2s;
+}
+.btn-primary { background:#1890ff; color:#fff; }
+.btn-primary:hover { background:#40a9ff; }
+.btn-primary:disabled { background:#b3d8ff; cursor:not-allowed; }
+.btn-default { background:#f0f0f0; color:#333; }
+
+.log-panel {
+  background:#1a1a2e; color:#a0ffa0; border-radius:8px;
+  padding:14px; font-size:13px; font-family:"Consolas","Microsoft YaHei",monospace;
+  max-height:400px; overflow-y:auto; line-height:1.6;
+}
+.log-line { white-space:pre-wrap; word-break:break-all; }
+.log-line.error { color:#ff6b6b; }
+.log-line.success { color:#52c41a; font-weight:bold; }
+
+.preview-area {
+  background:#fafafa; border:1px solid #eee; border-radius:6px;
+  padding:12px; font-size:13px; max-height:200px; overflow-y:auto;
+  white-space:pre-wrap; color:#555;
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>📤 社交发布工具</h1>
+
+  <!-- 平台选择 -->
+  <div class="card">
+    <div style="font-size:14px;font-weight:600;margin-bottom:10px;">发布平台</div>
+    <div class="platform-group" id="platformGroup">
+      <label><input type="checkbox" value="weibo" checked><span>微博</span></label>
+      <label><input type="checkbox" value="xiaohongshu"><span>小红书</span></label>
+      <label><input type="checkbox" value="toutiao"><span>头条号</span></label>
+      <label><input type="checkbox" value="baijiahao"><span>百家号</span></label>
+      <label><input type="checkbox" value="bilibili"><span>B站</span></label>
+      <label><input type="checkbox" value="douyin"><span>抖音</span></label>
+    </div>
+  </div>
+
+  <!-- 内容输入 -->
+  <div class="card">
+    <div class="form-row">
+      <label>标题 *</label>
+      <input type="text" id="title" placeholder="输入文章标题">
+    </div>
+
+    <div class="form-row">
+      <label>文章内容</label>
+      <div style="display:flex;gap:10px;margin-bottom:8px;">
+        <button class="btn btn-default" onclick="document.getElementById('contentFile').click()" style="font-size:13px;padding:6px 14px;">📎 选择 MD 文件</button>
+        <input type="file" id="contentFile" accept=".md,.txt" style="display:none" onchange="onContentFile(this)">
+        <button class="btn btn-default" onclick="toggleTextInput()" style="font-size:13px;padding:6px 14px;">✏️ 直接粘贴</button>
+      </div>
+      <div id="textInputArea" style="display:none;">
+        <textarea id="contentText" placeholder="直接粘贴文章内容..."></textarea>
+      </div>
+      <div class="hint" id="contentHint"></div>
+    </div>
+
+    <div class="form-row">
+      <label>封面图</label>
+      <input type="file" id="coverImage" accept=".png,.jpg,.jpeg">
+    </div>
+
+    <div class="form-row">
+      <label>标签</label>
+      <input type="text" id="tags" placeholder="用逗号分隔，如：教育,重庆升学">
+    </div>
+
+    <div class="form-row" id="previewRow" style="display:none;">
+      <label>📄 改写预览</label>
+      <div class="preview-area" id="previewContent"></div>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-default" onclick="preview()">👁️ 预览改写</button>
+      <button class="btn btn-primary" id="publishBtn" onclick="publish()">🚀 发布</button>
+    </div>
+  </div>
+
+  <!-- 日志 -->
+  <div class="card" id="logCard" style="display:none;">
+    <div style="font-size:14px;font-weight:600;margin-bottom:8px;">📋 发布日志</div>
+    <div class="log-panel" id="logPanel"></div>
+  </div>
+</div>
+
+<script>
+let contentFileName = '';
+
+function onContentFile(input) {
+  if (input.files[0]) {
+    contentFileName = input.files[0].name;
+    document.getElementById('contentHint').textContent = '已选择: ' + contentFileName;
+    document.getElementById('textInputArea').style.display = 'none';
+  }
+}
+
+function toggleTextInput() {
+  const area = document.getElementById('textInputArea');
+  area.style.display = area.style.display === 'none' ? 'block' : 'none';
+  if (area.style.display === 'block') {
+    document.getElementById('contentFile').value = '';
+    contentFileName = '';
+    document.getElementById('contentHint').textContent = '';
+  }
+}
+
+function getSelectedPlatforms() {
+  const checks = document.querySelectorAll('#platformGroup input:checked');
+  return Array.from(checks).map(c => c.value);
+}
+
+function getFormData() {
+  const fd = new FormData();
+  const contentFile = document.getElementById('contentFile').files[0];
+  const contentText = document.getElementById('contentText').value;
+  const coverFile = document.getElementById('coverImage').files[0];
+
+  fd.append('title', document.getElementById('title').value);
+  fd.append('tags', document.getElementById('tags').value);
+
+  if (contentFile) fd.append('content_file', contentFile);
+  if (contentText) fd.append('content_text', contentText);
+  if (coverFile) fd.append('cover_image', coverFile);
+
+  return fd;
+}
+
+async function preview() {
+  const platforms = getSelectedPlatforms();
+  if (platforms.length === 0) return alert('请至少选择一个平台');
+  const fd = getFormData();
+  fd.append('platform', platforms[0]);
+
+  const resp = await fetch('/preview', { method:'POST', body:fd });
+  const data = await resp.json();
+  document.getElementById('previewRow').style.display = 'block';
+  document.getElementById('previewContent').textContent = data.body || data.error || '预览失败';
+}
+
+function addLog(msg, cls) {
+  const panel = document.getElementById('logPanel');
+  const line = document.createElement('div');
+  line.className = 'log-line' + (cls ? ' ' + cls : '');
+  line.textContent = msg;
+  panel.appendChild(line);
+  panel.scrollTop = panel.scrollHeight;
+}
+
+async function publish() {
+  const platforms = getSelectedPlatforms();
+  if (platforms.length === 0) return alert('请至少选择一个平台');
+
+  const title = document.getElementById('title').value.trim();
+  if (!title) return alert('请输入标题');
+
+  const contentFile = document.getElementById('contentFile').files[0];
+  const contentText = document.getElementById('contentText').value.trim();
+  if (!contentFile && !contentText) return alert('请选择文件或粘贴内容');
+
+  // 显示日志区
+  document.getElementById('logCard').style.display = 'block';
+  document.getElementById('logPanel').innerHTML = '';
+  document.getElementById('publishBtn').disabled = true;
+
+  for (const platform of platforms) {
+    addLog(`\n── 开始发布到 ${platform} ──`);
+
+    const fd = getFormData();
+    fd.append('platform', platform);
+
+    try {
+      const resp = await fetch('/publish', { method:'POST', body:fd });
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const {done, value} = await reader.read();
+        if (done) break;
+        const text = decoder.decode(value, {stream: true});
+        for (const line of text.split('\n')) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              const cls = data.error ? 'error' : (data.done ? 'success' : '');
+              addLog((data.error ? '❌ ' : '') + data.msg, cls);
+            } catch(e) {
+              addLog(line.slice(6));
+            }
+          }
+        }
+      }
+    } catch(e) {
+      addLog('连接失败: ' + e.message, 'error');
+    }
+  }
+
+  addLog('\n✅ 全部发布任务完成', 'success');
+  document.getElementById('publishBtn').disabled = false;
+}
+</script>
+</body>
+</html>

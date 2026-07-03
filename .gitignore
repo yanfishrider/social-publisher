@@ -26,3 +26,7 @@ content/*
 .idea/
 .vscode/
 *.swp
+
+# 大文件/generated
+*.tar.gz
+uploads/

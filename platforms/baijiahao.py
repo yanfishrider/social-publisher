@@ -114,23 +114,19 @@ class BaijiahaoPublisher:
         body.click()
         self.page.wait_for_timeout(500)
 
-        # 长文本用剪贴板粘贴，避免逐字键入超时
-        if len(content) > 1000:
-            import pyperclip
-            pyperclip.copy(content)
-            self.page.keyboard.press("Control+a")
-            self.page.wait_for_timeout(200)
-            self.page.keyboard.press("Control+v")
-            self.page.wait_for_timeout(1000)
-        else:
-            for paragraph in content.split("\n"):
-                if paragraph.strip():
-                    self.page.keyboard.type(paragraph, delay=10)
-                    self.page.wait_for_timeout(200)
-                    self.page.keyboard.press("Shift+Enter")
-                    self.page.wait_for_timeout(100)
+        # 逐字输入模拟真人打字
+        paragraphs = [p for p in content.split("\n") if p.strip()]
+        total = len(paragraphs)
+        for i, paragraph in enumerate(paragraphs):
+            self.page.keyboard.type(paragraph, delay=60)
+            if i < total - 1:
+                self.page.wait_for_timeout(300)
+                self.page.keyboard.press("Shift+Enter")
+                self.page.wait_for_timeout(200)
+            if (i + 1) % 5 == 0:
+                self.page.wait_for_timeout(800)
 
-        print("  ✅")
+        print(f"  ✅ 输入完成")
     
     # ── 3. 封面（必填，弹窗模式）──
     

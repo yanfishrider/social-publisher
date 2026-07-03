@@ -86,21 +86,18 @@ class WeiboPublisher:
         """)
         self.page.wait_for_timeout(500)
 
-        if len(content) > 1000:
-            import pyperclip
-            pyperclip.copy(content)
-            self.page.keyboard.press("Control+a")
-            self.page.wait_for_timeout(200)
-            self.page.keyboard.press("Control+v")
-            self.page.wait_for_timeout(1000)
-        else:
-            for paragraph in content.split("\n"):
-                if paragraph.strip():
-                    self.page.keyboard.type(paragraph, delay=10)
-                    self.page.wait_for_timeout(200)
-                    self.page.keyboard.press("Shift+Enter")
-                    self.page.wait_for_timeout(100)
-        print("  ✅")
+        # 逐字输入模拟真人打字
+        paragraphs = [p for p in content.split("\n") if p.strip()]
+        total = len(paragraphs)
+        for i, paragraph in enumerate(paragraphs):
+            self.page.keyboard.type(paragraph, delay=60)
+            if i < total - 1:
+                self.page.wait_for_timeout(300)
+                self.page.keyboard.press("Shift+Enter")
+                self.page.wait_for_timeout(200)
+            if (i + 1) % 5 == 0:
+                self.page.wait_for_timeout(800)
+        print(f"  ✅ 输入完成")
 
     def _set_cover(self, image_path: str):
         """设置封面 — 处理 .cover-empty(新文章) 或 .cover-preview(已有封面)"""
@@ -148,7 +145,7 @@ class WeiboPublisher:
 
         if imgs.count() > 0:
             # 点图片的父容器（绕过 select-mask）
-            parent = imgs.last.locator("..")
+            parent = imgs.first.locator("..")
             parent.click(force=True)
             self.page.wait_for_timeout(1000)
             print("  ✅ 已选中图片")
@@ -197,6 +194,8 @@ class WeiboPublisher:
         """)
         self.page.wait_for_timeout(2000)
 
+        # 等弹窗渲染完成，按钮出现
+        self.page.wait_for_selector("button:has-text('发布')", timeout=10000)
         publish_btn = self.page.locator("button:has-text('发布')").first
         if publish_btn.count() == 0:
             raise Exception("找不到发布按钮")

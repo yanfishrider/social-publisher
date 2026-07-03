@@ -40,6 +40,7 @@ class BilibiliPublisher:
         raise RuntimeError("找不到编辑器 iframe")
 
     def publish(self, title: str, content: str,
+                cover_image: str | None = None,
                 tags: list[str] | None = None) -> bool:
         if self.context is None:
             raise RuntimeError("未启动浏览器，先调 start() 或设置 context")
@@ -93,22 +94,18 @@ class BilibiliPublisher:
         editor.click()
         self.page.wait_for_timeout(500)
 
-        # 长文本用剪贴板粘贴
-        if len(content) > 1000:
-            import pyperclip
-            pyperclip.copy(content)
-            self.page.keyboard.press("Control+a")
-            self.page.wait_for_timeout(200)
-            self.page.keyboard.press("Control+v")
-            self.page.wait_for_timeout(1000)
-        else:
-            for paragraph in content.split("\n"):
-                if paragraph.strip():
-                    self.page.keyboard.type(paragraph, delay=10)
-                    self.page.wait_for_timeout(200)
-                    self.page.keyboard.press("Shift+Enter")
-                    self.page.wait_for_timeout(100)
-        print("  ✅")
+        # 逐字输入模拟真人打字
+        paragraphs = [p for p in content.split("\n") if p.strip()]
+        total = len(paragraphs)
+        for i, paragraph in enumerate(paragraphs):
+            self.page.keyboard.type(paragraph, delay=60)
+            if i < total - 1:
+                self.page.wait_for_timeout(300)
+                self.page.keyboard.press("Shift+Enter")
+                self.page.wait_for_timeout(200)
+            if (i + 1) % 5 == 0:
+                self.page.wait_for_timeout(800)
+        print(f"  ✅ 输入完成")
 
     def _set_tags(self, tags: list[str]):
         print(f"🏷️ 话题: {tags}")
