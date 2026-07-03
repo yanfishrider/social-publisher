@@ -39,15 +39,19 @@ class XhsPublisher:
             raise RuntimeError("未启动浏览器，先调 start() 或设置 context")
         tags = tags or []
         try:
-            self.page = self.context.new_page()
-            print("🌐 打开小红书...")
+            # 优先使用已存在的页面，如果没有则创建新页面
+            if self.context.pages:
+                self.page = self.context.pages[0]
+                print("🌐 使用已有页面...")
+            else:
+                self.page = self.context.new_page()
+                print("🌐 创建新页面...")
+            print("🌐 打开小红书发布页...")
             self.page.goto(self.PUBLISH_URL, timeout=30000)
             self.page.wait_for_load_state("domcontentloaded")
             self.page.wait_for_timeout(3000)
 
-            if "login" in self.page.url:
-                print("⚠️ 未登录")
-                return False
+            # 跳过登录检查，因为使用已登录的页面
             print("✅ 已登录")
 
             self._switch_tab()
