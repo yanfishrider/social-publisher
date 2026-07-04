@@ -3,13 +3,15 @@
 百度百家号反爬等级高，必须用真实浏览器避免检测
 """
 from playwright.sync_api import sync_playwright, BrowserContext, Page
+from human_typing import human_type, human_click, jitter
 
 
 class BaijiahaoPublisher:
     EDITOR_URL = "https://baijiahao.baidu.com/builder/rc/edit?type=news&is_from_cms=1"
     CDP_URL = "http://localhost:9222"
     
-    def __init__(self):
+    def __init__(self, auto_submit: bool = True):
+        self.auto_submit = auto_submit
         self._playwright = None
         self._browser = None
         self.context: BrowserContext | None = None
@@ -28,19 +30,36 @@ class BaijiahaoPublisher:
         print("✅ 已连接 Edge + Shadow DOM 劫持")
     
     def stop(self):
+        """关闭页面并释放 Playwright 资源"""
+        if self.page:
+            try:
+                self.page.close()
+            except Exception:
+                pass
+        if self._browser:
+            try:
+                self._browser.close()
+            except Exception:
+                pass
         if self._playwright:
-            self._playwright.stop()
+            try:
+                self._playwright.stop()
+            except Exception:
+                pass
+        self.page = None
+        self._browser = None
+        self._playwright = None
     
     def publish(self, title: str, content: str, cover_image: str,
                 tags: list[str] | None = None) -> bool:
         if self.context is None:
             raise RuntimeError("未启动浏览器，先调 start() 或设置 context")
-        
+
+        _keep_open = False
         try:
             self.page = self.context.new_page()
             print("🌐 打开百家号编辑器...")
-            self.page.goto(self.EDITOR_URL, timeout=30000)
-            self.page.wait_for_load_state("domcontentloaded")
+            self.page.goto(self.EDITOR_URL, timeout=60000, wait_until="domcontentloaded")
             self.page.wait_for_timeout(5000)
             
             if not self._check_login():
@@ -55,8 +74,12 @@ class BaijiahaoPublisher:
             if tags:
                 self._set_tags(tags)
             
-            self._submit()
-            print("🎉 发布成功！")
+            if self.auto_submit:
+                self._submit()
+                print("🎉 发布成功！")
+            else:
+                _keep_open = True
+                print("⏸️  内容已填充完毕，请手动点击发布")
             return True
             
         except Exception as e:
@@ -64,7 +87,7 @@ class BaijiahaoPublisher:
             import traceback; traceback.print_exc()
             return False
         finally:
-            if self.page:
+            if self.page and not _keep_open:
                 try:
                     self.page.wait_for_timeout(3000)
                     self.page.close()
@@ -92,14 +115,14 @@ class BaijiahaoPublisher:
         print(f"📝 标题: {title}")
         
         editor = self.page.locator("[data-lexical-editor='true']").first
-        editor.click()
-        self.page.wait_for_timeout(300)
+        human_click(self.page, editor)
+        self.page.wait_for_timeout(jitter(300))
         self.page.keyboard.press("Control+a")
-        self.page.wait_for_timeout(100)
+        self.page.wait_for_timeout(jitter(100))
         self.page.keyboard.press("Backspace")
-        self.page.wait_for_timeout(200)
-        self.page.keyboard.type(title, delay=20)
-        self.page.wait_for_timeout(500)
+        self.page.wait_for_timeout(jitter(200))
+        human_type(self.page, title, "baidu")
+        self.page.wait_for_timeout(jitter(500))
         print("  ✅")
     
     # ── 2. 正文（UEditor iframe #ueditor_0）──
@@ -111,20 +134,10 @@ class BaijiahaoPublisher:
         frame = self.page.frame_locator("#ueditor_0")
         body = frame.locator("body")
 
-        body.click()
-        self.page.wait_for_timeout(500)
+        human_click(self.page, body)
+        self.page.wait_for_timeout(jitter(500))
 
-        # 逐字输入模拟真人打字
-        paragraphs = [p for p in content.split("\n") if p.strip()]
-        total = len(paragraphs)
-        for i, paragraph in enumerate(paragraphs):
-            self.page.keyboard.type(paragraph, delay=60)
-            if i < total - 1:
-                self.page.wait_for_timeout(300)
-                self.page.keyboard.press("Shift+Enter")
-                self.page.wait_for_timeout(200)
-            if (i + 1) % 5 == 0:
-                self.page.wait_for_timeout(800)
+        human_type(self.page, content, "baidu")
 
         print(f"  ✅ 输入完成")
     
@@ -181,7 +194,7 @@ class BaijiahaoPublisher:
         
         btn = self.page.locator("[data-testid='publish-btn']")
         if btn.count() > 0:
-            btn.first.click()
+            human_click(self.page, btn.first)
             print("  ✅ 点击发布按钮")
         else:
             raise Exception("找不到发布按钮")

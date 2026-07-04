@@ -3,13 +3,15 @@ B站专栏发布器 — 通过 CDP 连接真实 Edge 浏览器
 编辑器在 iframe 内（ProseMirror），封面自动生成无需上传
 """
 from playwright.sync_api import sync_playwright, BrowserContext, Page, Frame
+from human_typing import human_type, human_click, jitter
 
 
 class BilibiliPublisher:
     EDITOR_URL = "https://member.bilibili.com/platform/upload/text/new-edit"
     CDP_URL = "http://localhost:9222"
 
-    def __init__(self):
+    def __init__(self, auto_submit: bool = True):
+        self.auto_submit = auto_submit
         self._playwright = None
         self._browser = None
         self.context: BrowserContext | None = None
@@ -28,8 +30,25 @@ class BilibiliPublisher:
         print("✅ 已连接 Edge + Shadow DOM 劫持")
 
     def stop(self):
+        """关闭页面并释放 Playwright 资源"""
+        if self.page:
+            try:
+                self.page.close()
+            except Exception:
+                pass
+        if self._browser:
+            try:
+                self._browser.close()
+            except Exception:
+                pass
         if self._playwright:
-            self._playwright.stop()
+            try:
+                self._playwright.stop()
+            except Exception:
+                pass
+        self.page = None
+        self._browser = None
+        self._playwright = None
 
     @property
     def _editor_frame(self) -> Frame:
@@ -45,12 +64,12 @@ class BilibiliPublisher:
         if self.context is None:
             raise RuntimeError("未启动浏览器，先调 start() 或设置 context")
 
+        _keep_open = False
         try:
             self.page = self.context.new_page()
             print("🌐 打开 B 站专栏编辑器...")
-            self.page.goto(self.EDITOR_URL, timeout=30000)
-            self.page.wait_for_load_state("networkidle", timeout=30000)
-            self.page.wait_for_timeout(3000)
+            self.page.goto(self.EDITOR_URL, timeout=60000, wait_until="domcontentloaded")
+            self.page.wait_for_timeout(5000)
 
             if "login" in self.page.url.lower():
                 print("⚠️ 未登录"); return False
@@ -60,16 +79,20 @@ class BilibiliPublisher:
             self._set_content(content)
             if tags:
                 self._set_tags(tags)
-            self._submit()
-
-            print("🎉 发布成功！")
+            
+            if self.auto_submit:
+                self._submit()
+                print("🎉 发布成功！")
+            else:
+                _keep_open = True
+                print("⏸️  内容已填充完毕，请手动点击发布")
             return True
         except Exception as e:
             print(f"❌ {e}")
             import traceback; traceback.print_exc()
             return False
         finally:
-            if self.page:
+            if self.page and not _keep_open:
                 try:
                     self.page.wait_for_timeout(2000)
                     self.page.close()
@@ -81,30 +104,21 @@ class BilibiliPublisher:
         print(f"📝 标题: {title}")
         frame = self._editor_frame
         el = frame.locator("textarea[placeholder*='标题']").first
-        el.click()
-        self.page.wait_for_timeout(300)
-        el.fill(title)
-        self.page.wait_for_timeout(500)
+        human_click(self.page, el)
+        self.page.wait_for_timeout(jitter(300))
+        human_type(self.page, title, "standard")
+        self.page.wait_for_timeout(jitter(500))
         print("  ✅")
 
     def _set_content(self, content: str):
         print(f"📄 正文 ({len(content)} 字)...")
         frame = self._editor_frame
         editor = frame.locator(".tiptap.ProseMirror").first
-        editor.click()
-        self.page.wait_for_timeout(500)
+        human_click(self.page, editor)
+        self.page.wait_for_timeout(jitter(500))
 
-        # 逐字输入模拟真人打字
-        paragraphs = [p for p in content.split("\n") if p.strip()]
-        total = len(paragraphs)
-        for i, paragraph in enumerate(paragraphs):
-            self.page.keyboard.type(paragraph, delay=60)
-            if i < total - 1:
-                self.page.wait_for_timeout(300)
-                self.page.keyboard.press("Shift+Enter")
-                self.page.wait_for_timeout(200)
-            if (i + 1) % 5 == 0:
-                self.page.wait_for_timeout(800)
+        human_type(self.page, content, "standard")
+
         print(f"  ✅ 输入完成")
 
     def _set_tags(self, tags: list[str]):
@@ -151,7 +165,7 @@ class BilibiliPublisher:
         if btn.count() == 0:
             raise Exception("找不到发布按钮")
         print(f"  📌 点击: {btn.inner_text()}")
-        btn.click()
+        human_click(self.page, btn)
         self.page.wait_for_timeout(3000)
 
         # 检测发布结果

@@ -3,13 +3,15 @@
 ProseMirror 编辑器，支持 Markdown
 """
 from playwright.sync_api import sync_playwright, BrowserContext, Page
+from human_typing import human_type, human_click, jitter
 
 
 class WeiboPublisher:
     EDITOR_URL = "https://card.weibo.com/article/v5/editor#/draft"
     CDP_URL = "http://localhost:9222"
 
-    def __init__(self):
+    def __init__(self, auto_submit: bool = True):
+        self.auto_submit = auto_submit
         self._playwright = None
         self._browser = None
         self.context: BrowserContext | None = None
@@ -28,8 +30,25 @@ class WeiboPublisher:
         print("✅ 已连接 Edge + Shadow DOM 劫持")
 
     def stop(self):
+        """关闭页面并释放 Playwright 资源"""
+        if self.page:
+            try:
+                self.page.close()
+            except Exception:
+                pass
+        if self._browser:
+            try:
+                self._browser.close()
+            except Exception:
+                pass
         if self._playwright:
-            self._playwright.stop()
+            try:
+                self._playwright.stop()
+            except Exception:
+                pass
+        self.page = None
+        self._browser = None
+        self._playwright = None
 
     def publish(self, title: str, content: str,
                 cover_image: str | None = None,
@@ -37,45 +56,56 @@ class WeiboPublisher:
         if self.context is None:
             raise RuntimeError("未启动浏览器，先调 start() 或设置 context")
 
+        _keep_open = False
         try:
             self.page = self.context.new_page()
             print("🌐 打开微博头条文章编辑器...")
-            self.page.goto(self.EDITOR_URL, timeout=30000)
-            self.page.wait_for_load_state("networkidle", timeout=30000)
-            self.page.wait_for_timeout(3000)
+            self.page.goto(self.EDITOR_URL, timeout=60000, wait_until="domcontentloaded")
+            self.page.wait_for_timeout(5000)
 
             if "login" in self.page.url.lower():
                 print("⚠️ 未登录"); return False
             print("✅ 已登录")
 
+            self._wait_editor()
             self._set_title(title)
             self._set_content(content)
 
             if cover_image:
                 self._set_cover(cover_image)
 
-            self._submit()
-
-            print("🎉 发布成功！")
+            if self.auto_submit:
+                self._submit()
+                print("🎉 发布成功！")
+            else:
+                _keep_open = True
+                print("⏸️  内容已填充完毕，请手动点击发布")
             return True
         except Exception as e:
             print(f"❌ {e}")
             import traceback; traceback.print_exc()
             return False
         finally:
-            if self.page:
+            if self.page and not _keep_open:
                 try:
                     self.page.wait_for_timeout(2000)
                     self.page.close()
                 except Exception:
                     pass
 
+    def _wait_editor(self):
+        print("⏳ 等待编辑器渲染...")
+        self.page.wait_for_selector("textarea[placeholder='请输入标题']", timeout=15000)
+        self.page.wait_for_timeout(2000)
+        print("  ✅ 编辑器已就绪")
+
     def _set_title(self, title: str):
         title = title[:32]
         print(f"📝 标题: {title}")
         el = self.page.locator("textarea[placeholder='请输入标题']").first
-        el.fill(title, force=True)
-        self.page.wait_for_timeout(500)
+        human_click(self.page, el)
+        human_type(self.page, title, "standard")
+        self.page.wait_for_timeout(jitter(500))
         print("  ✅")
 
     def _set_content(self, content: str):
@@ -84,19 +114,10 @@ class WeiboPublisher:
             const el = document.querySelector('.tiptap.ProseMirror');
             if (el) el.focus();
         """)
-        self.page.wait_for_timeout(500)
+        self.page.wait_for_timeout(jitter(500))
 
-        # 逐字输入模拟真人打字
-        paragraphs = [p for p in content.split("\n") if p.strip()]
-        total = len(paragraphs)
-        for i, paragraph in enumerate(paragraphs):
-            self.page.keyboard.type(paragraph, delay=60)
-            if i < total - 1:
-                self.page.wait_for_timeout(300)
-                self.page.keyboard.press("Shift+Enter")
-                self.page.wait_for_timeout(200)
-            if (i + 1) % 5 == 0:
-                self.page.wait_for_timeout(800)
+        human_type(self.page, content, "standard")
+
         print(f"  ✅ 输入完成")
 
     def _set_cover(self, image_path: str):
@@ -186,7 +207,7 @@ class WeiboPublisher:
         if next_btn.count() == 0:
             raise Exception("找不到下一步按钮")
         print(f"  📌 点击: {next_btn.inner_text()}")
-        next_btn.click(force=True)
+        human_click(self.page, next_btn, force=True)
         self.page.wait_for_timeout(3000)
 
         self.page.evaluate("""
@@ -200,7 +221,7 @@ class WeiboPublisher:
         if publish_btn.count() == 0:
             raise Exception("找不到发布按钮")
         print(f"  📌 点击: {publish_btn.inner_text()}")
-        publish_btn.click(force=True)
+        human_click(self.page, publish_btn, force=True)
         self.page.wait_for_timeout(3000)
 
         self._wait_for_publish_result()

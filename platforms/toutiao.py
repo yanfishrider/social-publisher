@@ -3,13 +3,15 @@
 字节跳动反爬等级极高，必须用真实浏览器避免检测
 """
 from playwright.sync_api import sync_playwright, BrowserContext, Page
+from human_typing import human_type, human_click, jitter
 
 
 class ToutiaoPublisher:
     EDITOR_URL = "https://mp.toutiao.com/profile_v4/graphic/publish?from=toutiao_pc"
     CDP_URL = "http://localhost:9222"
     
-    def __init__(self):
+    def __init__(self, auto_submit: bool = True):
+        self.auto_submit = auto_submit
         self._playwright = None
         self._browser = None
         self.context: BrowserContext | None = None
@@ -28,19 +30,36 @@ class ToutiaoPublisher:
         print("✅ 已连接 Edge + Shadow DOM 劫持")
 
     def stop(self):
+        """关闭页面并释放 Playwright 资源"""
+        if self.page:
+            try:
+                self.page.close()
+            except Exception:
+                pass
+        if self._browser:
+            try:
+                self._browser.close()
+            except Exception:
+                pass
         if self._playwright:
-            self._playwright.stop()
+            try:
+                self._playwright.stop()
+            except Exception:
+                pass
+        self.page = None
+        self._browser = None
+        self._playwright = None
     
     def publish(self, title: str, content: str, cover_image: str | None = None,
                 tags: list[str] | None = None) -> bool:
         if self.context is None:
             raise RuntimeError("未启动浏览器，先调 start() 或设置 context")
         
+        _keep_open = False
         try:
             self.page = self.context.new_page()
             print("🌐 打开头条号编辑器...")
-            self.page.goto(self.EDITOR_URL, timeout=30000)
-            self.page.wait_for_load_state("domcontentloaded")
+            self.page.goto(self.EDITOR_URL, timeout=60000, wait_until="domcontentloaded")
             self.page.wait_for_timeout(5000)
             
             if not self._check_login():
@@ -57,8 +76,12 @@ class ToutiaoPublisher:
             if tags:
                 self._set_tags(tags)
             
-            self._submit()
-            print("🎉 发布成功！")
+            if self.auto_submit:
+                self._submit()
+                print("🎉 发布成功！")
+            else:
+                _keep_open = True
+                print("⏸️  内容已填充完毕，请手动点击发布")
             return True
             
         except Exception as e:
@@ -66,7 +89,7 @@ class ToutiaoPublisher:
             import traceback; traceback.print_exc()
             return False
         finally:
-            if self.page:
+            if self.page and not _keep_open:
                 try:
                     self.page.wait_for_timeout(3000)
                     self.page.close()
@@ -102,10 +125,10 @@ class ToutiaoPublisher:
         print(f"📝 标题: {title}")
         
         el = self.page.locator("textarea[placeholder*='标题']").first
-        el.click()
-        self.page.wait_for_timeout(300)
-        el.fill(title)
-        self.page.wait_for_timeout(500)
+        human_click(self.page, el)
+        self.page.wait_for_timeout(jitter(300))
+        human_type(self.page, title, "byte_dance")
+        self.page.wait_for_timeout(jitter(500))
         print("  ✅")
     
     # ── 2. 正文（ProseMirror contenteditable）──
@@ -114,22 +137,10 @@ class ToutiaoPublisher:
         print(f"📄 正文 ({len(content)} 字)，逐字输入模拟真人...")
 
         editor = self.page.locator(".ProseMirror").first
-        editor.click()
-        self.page.wait_for_timeout(500)
+        human_click(self.page, editor)
+        self.page.wait_for_timeout(jitter(500))
 
-        paragraphs = [p for p in content.split("\n") if p.strip()]
-        total = len(paragraphs)
-        for i, paragraph in enumerate(paragraphs):
-            # 逐字键入，模拟真人打字速度 (50-80ms/字)
-            self.page.keyboard.type(paragraph, delay=60)
-            # 段落间自然停顿
-            if i < total - 1:
-                self.page.wait_for_timeout(300)
-                self.page.keyboard.press("Shift+Enter")
-                self.page.wait_for_timeout(200)
-            if (i + 1) % 5 == 0:
-                # 每5段多停一下，模拟思考时间
-                self.page.wait_for_timeout(800)
+        human_type(self.page, content, "byte_dance")
 
         print(f"  ✅ 输入完成")
     
@@ -188,7 +199,7 @@ class ToutiaoPublisher:
         btn = self.page.locator(".byte-btn-primary:has-text('预览并发布')")
         if btn.count() == 0:
             raise Exception("找不到发布按钮")
-        btn.first.click()
+        human_click(self.page, btn.first)
         print("  ✅ 已点击预览并发布")
 
         # 等待 2 秒让手机预览弹出、按钮变为 "确认发布"
@@ -202,7 +213,7 @@ class ToutiaoPublisher:
             confirm_btn = self.page.locator("button:has-text('确认发布')").first
         confirm_btn.wait_for(state="visible", timeout=10000)
         print(f"  📌 检测到按钮: {confirm_btn.inner_text()}")
-        confirm_btn.click()
+        human_click(self.page, confirm_btn)
         try:
             self.page.wait_for_timeout(2000)
         except Exception:

@@ -3,13 +3,15 @@
 必须先上传图片才能进入编辑页，标题≤20字，正文~1000字
 """
 from playwright.sync_api import sync_playwright, BrowserContext, Page
+from human_typing import human_type, human_click, jitter
 
 
 class DouyinPublisher:
     UPLOAD_URL = "https://creator.douyin.com/creator-micro/content/upload"
     CDP_URL = "http://localhost:9222"
 
-    def __init__(self):
+    def __init__(self, auto_submit: bool = True):
+        self.auto_submit = auto_submit
         self._playwright = None
         self._browser = None
         self.context: BrowserContext | None = None
@@ -28,20 +30,37 @@ class DouyinPublisher:
         print("✅ 已连接 Edge + Shadow DOM 劫持")
 
     def stop(self):
+        """关闭页面并释放 Playwright 资源"""
+        if self.page:
+            try:
+                self.page.close()
+            except Exception:
+                pass
+        if self._browser:
+            try:
+                self._browser.close()
+            except Exception:
+                pass
         if self._playwright:
-            self._playwright.stop()
+            try:
+                self._playwright.stop()
+            except Exception:
+                pass
+        self.page = None
+        self._browser = None
+        self._playwright = None
 
     def publish(self, title: str, content: str, cover_image: str,
                 tags: list[str] | None = None) -> bool:
         if self.context is None:
             raise RuntimeError("未启动浏览器，先调 start() 或设置 context")
 
+        _keep_open = False
         try:
             self.page = self.context.new_page()
             print("🌐 打开抖音创作页...")
-            self.page.goto(self.UPLOAD_URL, timeout=30000)
-            self.page.wait_for_load_state("networkidle", timeout=30000)
-            self.page.wait_for_timeout(3000)
+            self.page.goto(self.UPLOAD_URL, timeout=60000, wait_until="domcontentloaded")
+            self.page.wait_for_timeout(5000)
 
             if "login" in self.page.url.lower():
                 print("⚠️ 未登录"); return False
@@ -55,18 +74,20 @@ class DouyinPublisher:
             self._set_content(content)
             if tags:
                 self._set_tags(tags)
-
-            # 3. 发布
-            self._submit()
-
-            print("🎉 发布成功！")
+            
+            if self.auto_submit:
+                self._submit()
+                print("🎉 发布成功！")
+            else:
+                _keep_open = True
+                print("⏸️  内容已填充完毕，请手动点击发布")
             return True
         except Exception as e:
             print(f"❌ {e}")
             import traceback; traceback.print_exc()
             return False
         finally:
-            if self.page:
+            if self.page and not _keep_open:
                 try:
                     self.page.wait_for_timeout(2000)
                     self.page.close()
@@ -101,30 +122,21 @@ class DouyinPublisher:
         title = title[:20]
         print(f"📝 标题: {title}")
         el = self.page.locator("input[placeholder='添加作品标题']").first
-        el.click()
-        self.page.wait_for_timeout(300)
-        el.fill(title)
-        self.page.wait_for_timeout(500)
+        human_click(self.page, el)
+        self.page.wait_for_timeout(jitter(300))
+        human_type(self.page, title, "byte_dance")
+        self.page.wait_for_timeout(jitter(500))
         print("  ✅")
 
     def _set_content(self, content: str):
         print(f"📄 正文 ({len(content)} 字)...")
         editor = self.page.locator(".zone-container.editor-kit-container").first
-        editor.click()
-        self.page.wait_for_timeout(500)
+        human_click(self.page, editor)
+        self.page.wait_for_timeout(jitter(500))
 
-        # 逐字输入模拟真人打字 (抖音限制~1000字)
-        text = content[:1000]
-        paragraphs = [p for p in text.split("\n") if p.strip()]
-        total = len(paragraphs)
-        for i, paragraph in enumerate(paragraphs):
-            self.page.keyboard.type(paragraph, delay=60)
-            if i < total - 1:
-                self.page.wait_for_timeout(300)
-                self.page.keyboard.press("Shift+Enter")
-                self.page.wait_for_timeout(200)
-            if (i + 1) % 5 == 0:
-                self.page.wait_for_timeout(800)
+        # 抖音限制 ~1000 字
+        human_type(self.page, content[:1000], "byte_dance")
+
         print(f"  ✅ 输入完成")
 
     def _set_tags(self, tags: list[str]):
@@ -156,7 +168,7 @@ class DouyinPublisher:
         if btn.count() == 0:
             raise Exception("找不到发布按钮")
         print(f"  📌 点击: {btn.inner_text()}")
-        btn.click()
+        human_click(self.page, btn)
         self.page.wait_for_timeout(3000)
 
         self._wait_for_publish_result()

@@ -16,7 +16,7 @@ from platforms.weibo import WeiboPublisher
 from content_rewriter import rewrite_for_xhs, rewrite_for_article
 
 
-def _publish_xhs(config: PublishConfig, use_edge: bool):
+def _publish_xhs(config: PublishConfig, use_edge: bool, auto_submit: bool = True):
     """发布小红书"""
     content = config.content_loaded
     xhs_tags = list(config.tags)
@@ -41,7 +41,7 @@ def _publish_xhs(config: PublishConfig, use_edge: bool):
         print("❌ 封面图处理失败"); return False
 
     if use_edge:
-        pub = XhsPublisher()
+        pub = XhsPublisher(auto_submit=auto_submit)
         pub.start()
         success = pub.publish(xhs_title, content, cover_path, xhs_tags)
         pub.stop()
@@ -49,7 +49,7 @@ def _publish_xhs(config: PublishConfig, use_edge: bool):
         browser = BrowserManager(user_data_dir=config.browser_data_dir, headless=config.headless)
         ctx = browser.start()
         try:
-            pub = XhsPublisher()
+            pub = XhsPublisher(auto_submit=auto_submit)
             pub.context = ctx
             success = pub.publish(xhs_title, content, cover_path, xhs_tags)
         finally:
@@ -58,7 +58,7 @@ def _publish_xhs(config: PublishConfig, use_edge: bool):
     return success, xhs_title
 
 
-def _publish_bjh(config: PublishConfig, use_edge: bool):
+def _publish_bjh(config: PublishConfig, use_edge: bool, auto_submit: bool = True):
     """发布百家号"""
     if not config.cover_image:
         print("❌ 百家号封面图为必填"); return False, config.title
@@ -76,7 +76,7 @@ def _publish_bjh(config: PublishConfig, use_edge: bool):
         print(f"   正文: {len(content)}字 | 标签: {bjh_tags}")
 
     if use_edge:
-        pub = BaijiahaoPublisher()
+        pub = BaijiahaoPublisher(auto_submit=auto_submit)
         pub.start()
         success = pub.publish(config.title, content, config.cover_image, bjh_tags)
         pub.stop()
@@ -84,7 +84,7 @@ def _publish_bjh(config: PublishConfig, use_edge: bool):
         browser = BrowserManager(user_data_dir=config.browser_data_dir, headless=config.headless)
         ctx = browser.start()
         try:
-            pub = BaijiahaoPublisher()
+            pub = BaijiahaoPublisher(auto_submit=auto_submit)
             pub.context = ctx
             success = pub.publish(config.title, content, config.cover_image, bjh_tags)
         finally:
@@ -93,7 +93,7 @@ def _publish_bjh(config: PublishConfig, use_edge: bool):
     return success, config.title
 
 
-def _publish_tt(config: PublishConfig, use_edge: bool):
+def _publish_tt(config: PublishConfig, use_edge: bool, auto_submit: bool = True):
     """发布头条号"""
     content = config.content_loaded
     tt_tags = list(config.tags)
@@ -108,7 +108,7 @@ def _publish_tt(config: PublishConfig, use_edge: bool):
         print(f"   正文: {len(content)}字 | 标签: {tt_tags}")
 
     if use_edge:
-        pub = ToutiaoPublisher()
+        pub = ToutiaoPublisher(auto_submit=auto_submit)
         pub.start()
         success = pub.publish(config.title, content, config.cover_image, tt_tags)
         pub.stop()
@@ -116,7 +116,7 @@ def _publish_tt(config: PublishConfig, use_edge: bool):
         browser = BrowserManager(user_data_dir=config.browser_data_dir, headless=config.headless)
         ctx = browser.start()
         try:
-            pub = ToutiaoPublisher()
+            pub = ToutiaoPublisher(auto_submit=auto_submit)
             pub.context = ctx
             success = pub.publish(config.title, content, config.cover_image, tt_tags)
         finally:
@@ -125,7 +125,7 @@ def _publish_tt(config: PublishConfig, use_edge: bool):
     return success, config.title
 
 
-def _publish_bili(config: PublishConfig, use_edge: bool):
+def _publish_bili(config: PublishConfig, use_edge: bool, auto_submit: bool = True):
     """发布 B 站专栏"""
     content = config.content_loaded
 
@@ -136,7 +136,7 @@ def _publish_bili(config: PublishConfig, use_edge: bool):
         print(f"   正文: {len(content)}字")
 
     if use_edge:
-        pub = BilibiliPublisher()
+        pub = BilibiliPublisher(auto_submit=auto_submit)
         pub.start()
         success = pub.publish(config.title, content)
         pub.stop()
@@ -144,7 +144,7 @@ def _publish_bili(config: PublishConfig, use_edge: bool):
         browser = BrowserManager(user_data_dir=config.browser_data_dir, headless=config.headless)
         ctx = browser.start()
         try:
-            pub = BilibiliPublisher()
+            pub = BilibiliPublisher(auto_submit=auto_submit)
             pub.context = ctx
             success = pub.publish(config.title, content)
         finally:
@@ -153,7 +153,7 @@ def _publish_bili(config: PublishConfig, use_edge: bool):
     return success, config.title
 
 
-def _publish_dy(config: PublishConfig, use_edge: bool):
+def _publish_dy(config: PublishConfig, use_edge: bool, auto_submit: bool = True):
     """发布抖音图文"""
     if not config.cover_image:
         print("❌ 抖音图文需要 --cover-image"); return False, config.title
@@ -168,7 +168,7 @@ def _publish_dy(config: PublishConfig, use_edge: bool):
         print(f"   正文: {len(content)}字")
 
     if use_edge:
-        pub = DouyinPublisher()
+        pub = DouyinPublisher(auto_submit=auto_submit)
         pub.start()
         success = pub.publish(config.title, content, config.cover_image)
         pub.stop()
@@ -176,7 +176,7 @@ def _publish_dy(config: PublishConfig, use_edge: bool):
         browser = BrowserManager(user_data_dir=config.browser_data_dir, headless=config.headless)
         ctx = browser.start()
         try:
-            pub = DouyinPublisher()
+            pub = DouyinPublisher(auto_submit=auto_submit)
             pub.context = ctx
             success = pub.publish(config.title, content, config.cover_image)
         finally:
@@ -185,7 +185,7 @@ def _publish_dy(config: PublishConfig, use_edge: bool):
     return success, config.title
 
 
-def _publish_wb(config: PublishConfig, use_edge: bool):
+def _publish_wb(config: PublishConfig, use_edge: bool, auto_submit: bool = True):
     """发布微博头条文章 — ProseMirror 支持 Markdown，长文转纯文本"""
     content = config.content_loaded
 
@@ -196,7 +196,7 @@ def _publish_wb(config: PublishConfig, use_edge: bool):
         print(f"   正文: {len(content)}字")
 
     if use_edge:
-        pub = WeiboPublisher()
+        pub = WeiboPublisher(auto_submit=auto_submit)
         pub.start()
         success = pub.publish(config.title, content, config.cover_image, config.tags)
         pub.stop()
@@ -204,7 +204,7 @@ def _publish_wb(config: PublishConfig, use_edge: bool):
         browser = BrowserManager(user_data_dir=config.browser_data_dir, headless=config.headless)
         ctx = browser.start()
         try:
-            pub = WeiboPublisher()
+            pub = WeiboPublisher(auto_submit=auto_submit)
             pub.context = ctx
             success = pub.publish(config.title, content, config.cover_image, config.tags)
         finally:
@@ -223,6 +223,7 @@ def cmd_publish(args):
         print("❌ 缺少 --content-file 或 --content-text"); sys.exit(1)
 
     use_edge = getattr(args, 'use_edge', False)
+    auto_submit = not getattr(args, 'manual', False)
 
     platforms = [platform]
     if platform == "all":
@@ -235,17 +236,17 @@ def cmd_publish(args):
         print(f"{'='*60}")
 
         if p == "xiaohongshu":
-            ok, title = _publish_xhs(config, use_edge)
+            ok, title = _publish_xhs(config, use_edge, auto_submit)
         elif p == "baijiahao":
-            ok, title = _publish_bjh(config, use_edge)
+            ok, title = _publish_bjh(config, use_edge, auto_submit)
         elif p == "toutiao":
-            ok, title = _publish_tt(config, use_edge)
+            ok, title = _publish_tt(config, use_edge, auto_submit)
         elif p == "bilibili":
-            ok, title = _publish_bili(config, use_edge)
+            ok, title = _publish_bili(config, use_edge, auto_submit)
         elif p == "douyin":
-            ok, title = _publish_dy(config, use_edge)
+            ok, title = _publish_dy(config, use_edge, auto_submit)
         elif p == "weibo":
-            ok, title = _publish_wb(config, use_edge)
+            ok, title = _publish_wb(config, use_edge, auto_submit)
         else:
             print(f"❌ 未知平台: {p}"); sys.exit(1)
 
@@ -260,6 +261,10 @@ def cmd_publish(args):
 
     if not any("✅" in r for r in results):
         sys.exit(1)
+
+    if not auto_submit:
+        print("\n⏸️  所有平台内容已填充完毕")
+        input("   手动发布完成后按 Enter 关闭浏览器...")
 
 
 def cmd_login(args):
@@ -305,6 +310,7 @@ def main():
     pub.add_argument("--browser-data-dir", default="./chromium-browser-data")
     pub.add_argument("--headless", action="store_true")
     pub.add_argument("--use-edge", action="store_true", help="连接真实 Edge 浏览器（需先启动: msedge --remote-debugging-port=9222）")
+    pub.add_argument("--manual", action="store_true", help="仅填充图文不发布，由用户手动点击发布按钮")
 
     login = sub.add_parser("login")
     login.add_argument("platform", choices=["xiaohongshu", "baijiahao", "toutiao", "bilibili", "douyin", "weibo"])

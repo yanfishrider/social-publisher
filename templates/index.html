@@ -109,6 +109,13 @@ h1 { font-size:22px; margin-bottom:20px; color:#1a1a1a; }
       <input type="text" id="tags" placeholder="用逗号分隔，如：教育,重庆升学">
     </div>
 
+    <div class="form-row">
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+        <input type="checkbox" id="manualMode" checked onchange="onManualChange()">
+        <span style="font-weight:400;">仅填充不发布（手动点击发布按钮）</span>
+      </label>
+    </div>
+
     <div class="form-row" id="previewRow" style="display:none;">
       <label>📄 改写预览</label>
       <div class="preview-area" id="previewContent"></div>
@@ -116,7 +123,7 @@ h1 { font-size:22px; margin-bottom:20px; color:#1a1a1a; }
 
     <div class="actions">
       <button class="btn btn-default" onclick="preview()">👁️ 预览改写</button>
-      <button class="btn btn-primary" id="publishBtn" onclick="publish()">🚀 发布</button>
+      <button class="btn btn-primary" id="publishBtn" onclick="publish()">📝 填充</button>
     </div>
   </div>
 
@@ -129,6 +136,7 @@ h1 { font-size:22px; margin-bottom:20px; color:#1a1a1a; }
 
 <script>
 let contentFileName = '';
+let manualSessions = [];  // 手动模式下待关闭的会话ID列表
 
 function onContentFile(input) {
   if (input.files[0]) {
@@ -136,6 +144,11 @@ function onContentFile(input) {
     document.getElementById('contentHint').textContent = '已选择: ' + contentFileName;
     document.getElementById('textInputArea').style.display = 'none';
   }
+}
+
+function onManualChange() {
+  const manual = document.getElementById('manualMode').checked;
+  document.getElementById('publishBtn').textContent = manual ? '📝 填充' : '🚀 发布';
 }
 
 function toggleTextInput() {
@@ -158,9 +171,11 @@ function getFormData() {
   const contentFile = document.getElementById('contentFile').files[0];
   const contentText = document.getElementById('contentText').value;
   const coverFile = document.getElementById('coverImage').files[0];
+  const manual = document.getElementById('manualMode').checked;
 
   fd.append('title', document.getElementById('title').value);
   fd.append('tags', document.getElementById('tags').value);
+  fd.append('auto_submit', manual ? '0' : '1');
 
   if (contentFile) fd.append('content_file', contentFile);
   if (contentText) fd.append('content_text', contentText);
@@ -201,45 +216,86 @@ async function publish() {
   const contentText = document.getElementById('contentText').value.trim();
   if (!contentFile && !contentText) return alert('请选择文件或粘贴内容');
 
+  const manual = document.getElementById('manualMode').checked;
+  manualSessions = [];
+
   // 显示日志区
   document.getElementById('logCard').style.display = 'block';
   document.getElementById('logPanel').innerHTML = '';
   document.getElementById('publishBtn').disabled = true;
 
-  for (const platform of platforms) {
-    addLog(`\n── 开始发布到 ${platform} ──`);
+  // 一次请求发全部平台
+  const fd = getFormData();
+  fd.append('platforms', platforms.join(','));
 
-    const fd = getFormData();
-    fd.append('platform', platform);
+  try {
+    const resp = await fetch('/publish', { method:'POST', body:fd });
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
 
-    try {
-      const resp = await fetch('/publish', { method:'POST', body:fd });
-      const reader = resp.body.getReader();
-      const decoder = new TextDecoder();
-
-      while (true) {
-        const {done, value} = await reader.read();
-        if (done) break;
-        const text = decoder.decode(value, {stream: true});
-        for (const line of text.split('\n')) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6));
-              const cls = data.error ? 'error' : (data.done ? 'success' : '');
-              addLog((data.error ? '❌ ' : '') + data.msg, cls);
-            } catch(e) {
-              addLog(line.slice(6));
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      const text = decoder.decode(value, {stream: true});
+      for (const line of text.split('\n')) {
+        if (line.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(line.slice(6));
+            const cls = data.error ? 'error' : (data.done ? 'success' : '');
+            addLog((data.error ? '❌ ' : '') + data.msg, cls);
+            if (manual && data.msg && data.msg.includes('会话ID:')) {
+              const sid = data.msg.match(/会话ID:\s*(\S+)/);
+              if (sid) manualSessions.push({platform: data.platform || '', id: sid[1]});
             }
+          } catch(e) {
+            addLog(line.slice(6));
           }
         }
       }
-    } catch(e) {
-      addLog('连接失败: ' + e.message, 'error');
     }
+  } catch(e) {
+    addLog('连接失败: ' + e.message, 'error');
   }
 
-  addLog('\n✅ 全部发布任务完成', 'success');
+  if (manual && manualSessions.length > 0) {
+    addLog('\n⏸️  请在浏览器中手动点击各平台发布按钮', 'success');
+    showManualFinish();
+  } else {
+    addLog('\n✅ 全部发布任务完成', 'success');
+  }
   document.getElementById('publishBtn').disabled = false;
+}
+
+async function finishPublish() {
+  for (const s of manualSessions) {
+    addLog(`🔒 关闭 ${s.platform} (${s.id})...`);
+    try {
+      const fd = new FormData();
+      fd.append('session_id', s.id);
+      const resp = await fetch('/finish', { method:'POST', body:fd });
+      const data = await resp.json();
+      addLog(data.ok ? `  ✅ 已关闭` : `  ❌ ${data.msg}`);
+    } catch(e) {
+      addLog(`  ❌ ${e.message}`);
+    }
+  }
+  addLog('\n✅ 全部完成', 'success');
+  document.getElementById('finishBtn').style.display = 'none';
+  manualSessions = [];
+}
+
+function showManualFinish() {
+  let btn = document.getElementById('finishBtn');
+  if (!btn) {
+    btn = document.createElement('button');
+    btn.id = 'finishBtn';
+    btn.className = 'btn btn-primary';
+    btn.textContent = '✅ 已完成手动发布，关闭页面';
+    btn.onclick = finishPublish;
+    btn.style.marginTop = '8px';
+    document.getElementById('logCard').appendChild(btn);
+  }
+  btn.style.display = 'block';
 }
 </script>
 </body>
