@@ -2,7 +2,7 @@
 抖音图文发布器 — 通过 CDP 连接真实 Edge 浏览器
 必须先上传图片才能进入编辑页，标题≤20字，正文~1000字
 """
-from playwright.sync_api import sync_playwright, BrowserContext, Page
+from patchright.sync_api import sync_playwright, BrowserContext, Page
 from human_typing import human_type, human_click, jitter
 
 
@@ -154,7 +154,7 @@ class DouyinPublisher:
             if tag_input.count() == 0:
                 tag_input = self.page.locator("[contenteditable='true']").last
             if tag_input.count() > 0:
-                tag_input.first.fill(tag)
+                tag_input.first.click(); self.page.wait_for_timeout(jitter(300)); self.page.keyboard.type(tag, delay=jitter(60))
                 self.page.wait_for_timeout(500)
                 self.page.keyboard.press("Enter")
                 self.page.wait_for_timeout(500)

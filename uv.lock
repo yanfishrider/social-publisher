@@ -175,6 +175,25 @@ wheels = [
 ]
 
 [[package]]
+name = "patchright"
+version = "1.61.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "greenlet" },
+    { name = "pyee" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/01/6d/b565dd267090ae04d3d180a6264feade107da29ed2adbcdd0e9395eff20d/patchright-1.61.1-py3-none-macosx_10_13_x86_64.whl", hash = "sha256:c31720d60e03a5d409fddebbaf75cd2d6193424648582efed9c6828be8f5bb13", size = 43398803, upload-time = "2026-06-29T10:37:18.492Z" },
+    { url = "https://files.pythonhosted.org/packages/40/0e/187aa0cc1b40ebf55a5eb7caf442296d2b4a5bcfbc518d70b260aaf4ad2c/patchright-1.61.1-py3-none-macosx_11_0_arm64.whl", hash = "sha256:110a33e664ea35dba58bbb7cc90ffcb80599b0a5c30cf18128c73e6b59d1e243", size = 42181940, upload-time = "2026-06-29T10:37:22.583Z" },
+    { url = "https://files.pythonhosted.org/packages/3d/6b/f7e494b15dd8cfb2622e1d9936b2fca25d2552ae9627d1b37223c4c1a493/patchright-1.61.1-py3-none-macosx_11_0_universal2.whl", hash = "sha256:dbbb304e1fbfdb1add88109787ef328544c80d5c79a3e4195a618b48be13045e", size = 43398808, upload-time = "2026-06-29T10:37:26.571Z" },
+    { url = "https://files.pythonhosted.org/packages/e4/be/a1ac13ddebcb96fc87402796196de1fdd46657239794ddd2ab42de0aff7a/patchright-1.61.1-py3-none-manylinux1_x86_64.whl", hash = "sha256:e73473c9b651b51068320dcafee6cce1edb9e0107c986b851f60ad0cad468a2a", size = 47398305, upload-time = "2026-06-29T10:37:30.581Z" },
+    { url = "https://files.pythonhosted.org/packages/10/ae/2d83365f6d395d3a773a58e8e7da2fb8d3e26a62d1f8d9f78b9b37072570/patchright-1.61.1-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:ee8a4b3b33033d50ee796472f47660c04ddb60ec7f30479a5df82f5019689cb4", size = 47097467, upload-time = "2026-06-29T10:37:34.757Z" },
+    { url = "https://files.pythonhosted.org/packages/30/40/448a04f81ab7d8ad767a6ac5f4c49409659f370e153aefdbde4d3cc1051a/patchright-1.61.1-py3-none-win32.whl", hash = "sha256:091ec4374e8d5c2f64e1b5a50b3ac172598bd0be86b9fd687e87d773784aaa80", size = 37821764, upload-time = "2026-06-29T10:37:39.686Z" },
+    { url = "https://files.pythonhosted.org/packages/74/54/72956af5c01b7f7aa44760f3b67f779705cef91960618c0bd6a7368e67bb/patchright-1.61.1-py3-none-win_amd64.whl", hash = "sha256:8514e5a7da062481c82646b27d293f6efcb1e766500bc0157f4cadee54b6b61f", size = 37821772, upload-time = "2026-06-29T10:37:43.577Z" },
+    { url = "https://files.pythonhosted.org/packages/c9/b0/2e83f9245e08db9f5d1ed10e5be581feac18ed3b5eadd5dbe32aa487567b/patchright-1.61.1-py3-none-win_arm64.whl", hash = "sha256:be79b2931a76a93e77b2e75970be5e4a65ed856de1f6cd170386fbc78f7f55a8", size = 33932055, upload-time = "2026-06-29T10:37:47.083Z" },
+]
+
+[[package]]
 name = "pillow"
 version = "12.2.0"
 source = { registry = "https://pypi.org/simple" }
@@ -443,6 +462,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "fastapi" },
     { name = "nest-asyncio" },
+    { name = "patchright" },
     { name = "pillow" },
     { name = "playwright" },
     { name = "pyperclip" },
@@ -455,6 +475,7 @@ dependencies = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.139.0" },
     { name = "nest-asyncio", specifier = ">=1.6.0" },
+    { name = "patchright", specifier = ">=1.61.1" },
     { name = "pillow", specifier = ">=10.0.0" },
     { name = "playwright", specifier = ">=1.54.0" },
     { name = "pyperclip", specifier = ">=1.9.0" },

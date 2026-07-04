@@ -2,7 +2,7 @@
 B站专栏发布器 — 通过 CDP 连接真实 Edge 浏览器
 编辑器在 iframe 内（ProseMirror），封面自动生成无需上传
 """
-from playwright.sync_api import sync_playwright, BrowserContext, Page, Frame
+from patchright.sync_api import sync_playwright, BrowserContext, Page, Frame
 from human_typing import human_type, human_click, jitter
 
 
@@ -143,7 +143,7 @@ class BilibiliPublisher:
                 # 可能是 contenteditable
                 tag_input = frame.locator("[contenteditable='true']").last
             if tag_input.count() > 0:
-                tag_input.first.fill(tag)
+                tag_input.first.click(); self.page.wait_for_timeout(jitter(300)); self.page.keyboard.type(tag, delay=jitter(60))
                 self.page.wait_for_timeout(500)
                 self.page.keyboard.press("Enter")
                 self.page.wait_for_timeout(500)

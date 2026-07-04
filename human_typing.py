@@ -54,27 +54,83 @@ def _r(range_tuple: tuple[int, int]) -> int:
 
 
 def _char_delay(cfg: TypingProfile) -> int:
-    """单字延迟：在 profile 范围内随机，约 3% 概率触发微卡顿 """
+    """单字延迟：在 profile 范围内随机，约 3% 概率触发微卡顿"""
     delay = _r(cfg.char_delay)
     if random.random() < 0.03:
         delay += random.randint(100, 300)  # 偶尔手滑/想词
     return delay
 
 
+# ── 打字速度韵律 ──
+
+def _speed_wave(i: int, total: int) -> float:
+    """
+    模拟打字速度的波浪式变化：开始慢（找节奏）、中间快、结尾又慢。
+    返回速度倍率 (0.7 ~ 1.5)，乘以基础延迟。
+    """
+    progress = i / max(total, 1)
+    # 正弦波 + 线性减速尾部
+    wave = 1.0 + 0.3 * (__import__("math").sin(progress * __import__("math").pi * 3))
+    # 最后 15% 减速
+    if progress > 0.85:
+        wave += (progress - 0.85) * 2.0
+    return max(0.7, min(1.5, wave))
+
+
+# ── 打错删除模拟 ──
+
+def _maybe_typo() -> bool:
+    """约 2% 概率触发打错"""
+    return random.random() < 0.02
+
+
+# ── 鼠标贝塞尔曲线 ──
+
+def _bezier_point(t: float, p0, p1, p2, p3) -> tuple[float, float]:
+    """三次贝塞尔曲线上的点"""
+    u = 1 - t
+    x = u**3 * p0[0] + 3*u**2*t * p1[0] + 3*u*t**2 * p2[0] + t**3 * p3[0]
+    y = u**3 * p0[1] + 3*u**2*t * p1[1] + 3*u*t**2 * p2[1] + t**3 * p3[1]
+    return (x, y)
+
+
 # ── 鼠标移动模拟 ──
 
 def human_move(page, locator) -> tuple[float, float]:
     """
-    非直线轨迹移动鼠标到元素内随机位置。
-    返回目标坐标 (tx, ty)，供后续坐标操作使用。
+    贝塞尔曲线轨迹移动鼠标到元素内随机位置。
+    返回目标坐标 (tx, ty)。
     """
     box = locator.bounding_box()
     if not box:
         return (0, 0)
+    
+    # 目标：元素内随机位置
     tx = box['x'] + box['width'] * random.uniform(0.2, 0.8)
     ty = box['y'] + box['height'] * random.uniform(0.2, 0.8)
-    page.mouse.move(tx, ty, steps=random.randint(3, 8))
-    page.wait_for_timeout(random.randint(50, 150))
+    
+    # 起点：当前鼠标位置或随机起点
+    try:
+        vp = page.viewport_size or {"width": 1920, "height": 1080}
+    except Exception:
+        vp = {"width": 1920, "height": 1080}
+    sx = random.randint(100, vp["width"] - 100)
+    sy = random.randint(100, vp["height"] - 200)
+    
+    # 贝塞尔控制点：偏向目标方向加随机偏移
+    cp1x = sx + (tx - sx) * random.uniform(0.3, 0.5) + random.randint(-80, 80)
+    cp1y = sy + (ty - sy) * random.uniform(0.1, 0.3) + random.randint(-60, 60)
+    cp2x = sx + (tx - sx) * random.uniform(0.6, 0.8) + random.randint(-50, 50)
+    cp2y = sy + (ty - sy) * random.uniform(0.5, 0.7) + random.randint(-40, 40)
+    
+    steps = random.randint(15, 30)
+    for i in range(steps + 1):
+        t = i / steps
+        x, y = _bezier_point(t, (sx, sy), (cp1x, cp1y), (cp2x, cp2y), (tx, ty))
+        page.mouse.move(x, y)
+        page.wait_for_timeout(random.randint(5, 15))
+    
+    page.wait_for_timeout(random.randint(30, 80))
     return (tx, ty)
 
 
@@ -140,17 +196,57 @@ def human_type_on(page, locator, content: str, profile: str = "xhs"):
 
 
 def _type_chars(page, text: str, cfg: TypingProfile):
-    """逐字键入 — 每个字独立随机延迟（page.keyboard 级别）"""
-    for ch in text:
+    """逐字键入 — 波浪式速度 + 随机打错删除"""
+    total = len(text)
+    for i, ch in enumerate(text):
+        # 速度韵律：波浪式快慢变化
+        wave = _speed_wave(i, total)
+        base_delay = _char_delay(cfg)
+        delay = int(base_delay * wave)
+        
+        # 打错删除模拟
+        if _maybe_typo():
+            # 敲一个错字
+            wrong = _similar_key(ch)
+            page.keyboard.insert_text(wrong)
+            page.wait_for_timeout(random.randint(100, 300))
+            page.keyboard.press("Backspace")
+            page.wait_for_timeout(random.randint(80, 200))
+        
         page.keyboard.insert_text(ch)
-        page.wait_for_timeout(_char_delay(cfg))
+        page.wait_for_timeout(delay)
+
+
+def _similar_key(ch: str) -> str:
+    """返回一个相近的键（模拟打错）"""
+    nearby = {
+        'a': 's', 's': 'a', 'd': 'f', 'f': 'd', 'g': 'h', 'h': 'g',
+        'j': 'k', 'k': 'j', 'l': 'k', 'q': 'w', 'w': 'q', 'e': 'r',
+        'r': 'e', 't': 'y', 'y': 't', 'u': 'i', 'i': 'u', 'o': 'p',
+        'p': 'o', 'z': 'x', 'x': 'z', 'c': 'v', 'v': 'c', 'b': 'n',
+        'n': 'b', 'm': 'n', '1': '2', '2': '1', '3': '4', '4': '3',
+        '，': '。', '。': '，', '的': '地', '地': '的', '是': '时', '了': '啦',
+    }
+    return nearby.get(ch, ch)
 
 
 def _type_chars_on(page, locator, text: str, cfg: TypingProfile):
-    """逐字键入 — 每个字独立随机延迟（locator 级别）"""
-    for ch in text:
+    """逐字键入 — 波浪式速度 + 随机打错删除（locator 版本）"""
+    total = len(text)
+    for i, ch in enumerate(text):
+        wave = _speed_wave(i, total)
+        base_delay = _char_delay(cfg)
+        delay = int(base_delay * wave)
+        
+        if _maybe_typo():
+            wrong = _similar_key(ch)
+            page.keyboard.insert_text(wrong)
+            page.wait_for_timeout(random.randint(100, 300))
+            page.keyboard.press("Backspace")
+            page.wait_for_timeout(random.randint(80, 200))
+        
         page.keyboard.insert_text(ch)
-        page.wait_for_timeout(_char_delay(cfg))
+        page.wait_for_timeout(delay)
 
 
 def jitter(base: int, pct: float = 0.3) -> int:

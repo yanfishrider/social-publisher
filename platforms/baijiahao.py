@@ -2,7 +2,7 @@
 百家号图文发布器 — 通过 CDP 连接真实 Edge 浏览器
 百度百家号反爬等级高，必须用真实浏览器避免检测
 """
-from playwright.sync_api import sync_playwright, BrowserContext, Page
+from patchright.sync_api import sync_playwright, BrowserContext, Page
 from human_typing import human_type, human_click, jitter
 
 
@@ -179,7 +179,7 @@ class BaijiahaoPublisher:
         tag_input = self.page.locator("[placeholder*='标签']")
         if tag_input.count() > 0:
             tag_input.first.click()
-            tag_input.first.fill(",".join(tags))
+            tag_input.first.click(); self.page.wait_for_timeout(jitter(300)); self.page.keyboard.type(",".join(tags), delay=jitter(40))
             self.page.wait_for_timeout(500)
             self.page.keyboard.press("Enter")
             print("  ✅")

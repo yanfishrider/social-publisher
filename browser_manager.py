@@ -1,7 +1,7 @@
 """
 浏览器管理器 — 负责浏览器的启动、复用和关闭
 """
-from playwright.sync_api import sync_playwright, BrowserContext
+from patchright.sync_api import sync_playwright, BrowserContext
 from pathlib import Path
 
 

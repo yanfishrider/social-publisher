@@ -2,7 +2,7 @@
 今日头条号图文发布器 — 通过 CDP 连接真实 Edge 浏览器
 字节跳动反爬等级极高，必须用真实浏览器避免检测
 """
-from playwright.sync_api import sync_playwright, BrowserContext, Page
+from patchright.sync_api import sync_playwright, BrowserContext, Page
 from human_typing import human_type, human_click, jitter
 
 

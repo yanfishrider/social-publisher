@@ -2,7 +2,7 @@
 微博头条文章发布器 — 通过 CDP 连接真实 Edge 浏览器
 ProseMirror 编辑器，支持 Markdown
 """
-from playwright.sync_api import sync_playwright, BrowserContext, Page
+from patchright.sync_api import sync_playwright, BrowserContext, Page
 from human_typing import human_type, human_click, jitter
 
 

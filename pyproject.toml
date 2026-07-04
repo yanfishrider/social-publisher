@@ -12,6 +12,7 @@ dependencies = [
     "uvicorn>=0.49.0",
     "python-multipart>=0.0.32",
     "nest-asyncio>=1.6.0",
+    "patchright>=1.61.1",
 ]
 
 [dependency-groups]

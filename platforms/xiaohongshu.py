@@ -2,7 +2,7 @@
 小红书图文发布器 — 通过 CDP 连接真实 Edge 浏览器
 不会被检测为自动化浏览器
 """
-from playwright.sync_api import sync_playwright, BrowserContext, Page
+from patchright.sync_api import sync_playwright, BrowserContext, Page
 from human_typing import human_type_on, human_click, jitter
 
 
