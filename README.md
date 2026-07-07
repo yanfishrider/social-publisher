@@ -196,9 +196,9 @@ uv run uvicorn server:app --reload --port 8083
 
 ```
 勾选平台 A,B,C → 点"填充" →
-  Worker A: 连CDP → 开页面 → 模拟浏览 → 填标题/正文 → 断CDP(页面留着) → 退出
-  Worker B: 连CDP → 开页面 → 模拟浏览 → 填标题/正文 → 断CDP(页面留着) → 退出
-  Worker C: 连CDP → 开页面 → 模拟浏览 → 填标题/正文 → 断CDP(页面留着) → 退出
+  Worker A: 连浏览器 → 开页面 → 填标题/正文 → 保持页面 → 退出
+  Worker B: 连浏览器 → 开页面 → 填标题/正文 → 保持页面 → 退出
+  Worker C: 连浏览器 → 开页面 → 填标题/正文 → 保持页面 → 退出
 → 全部填充完毕，Edge 中 3 个页面就绪，手动逐个发布
 ```
 
@@ -228,25 +228,24 @@ Web 界面和 CLI 均受理频率限制，超频自动跳过。
 
 ## 平台特性
 
-| 平台 | 编辑器 | 特殊处理 |
-|------|--------|----------|
-| 小红书 | 标准 textarea | Shadow DOM 劫持 |
-| 百家号 | UEditor iframe | 逐字输入 delay=60ms |
-| 今日头条 | ProseMirror 编辑器 | 逐字输入 delay=60ms |
-| B站专栏 | ProseMirror (iframe) | 逐字输入 delay=60ms |
-| 抖音 | contenteditable div | 逐字输入 delay=60ms |
-| 微博 | ProseMirror 富文本 | 逐字输入 delay=60ms |
+| 平台 | 内容类型 | 反爬等级 | 状态 |
+|------|----------|----------|------|
+| 小红书 | 图文笔记 | Medium | ✅ |
+| 百家号 | 长文 | High | ✅ |
+| 今日头条 | 长文 | Very High | ✅ |
+| B站专栏 | 专栏文章 | Medium | ✅ |
+| 抖音 | 图文 | High | ✅ |
+| 微博 | 头条文章 | Medium | ✅ |
+| 搜狐号 | 长文 | Low | ⏳ 审核问题暂缓 |
 
-## 自动化程度
+## 自动发布流程
 
-| 环节 | 自动化 | 说明 |
-|------|--------|------|
-| PDF 诊断 | ✅ 自动 | `pdf_to_markdown.py --diagnose` |
-| 文字型 PDF 提取 | ✅ 自动 | `pymupdf4llm` 直接转换 |
-| 转曲 PDF 提取 | ❌ 需 Hermes AI | vision 逐页读图，需 AI 参与 |
-| DOCX 提取 | ✅ 自动 | `docx_to_markdown.py` |
-| Markdown → 各平台文案 | ✅ 自动 | `content_rewriter.py` |
-| 发布到各平台 | ✅ 自动 | Playwright + CDP |
+1. 连接 Edge 浏览器（需先手动登录各平台）
+2. 上传封面图片
+3. 填充标题、正文、标签
+4. 手动/自动点击发布按钮
+
+内容过长时自动触发改写适配各平台格式。
 
 ## 架构设计
 
@@ -254,17 +253,16 @@ Web 界面和 CLI 均受理频率限制，超频自动跳过。
 
 ```python
 pub = PlatformPublisher()
-pub.start()   # CDP 连接 Edge 浏览器
+pub.start()   # 连接 Edge 浏览器
 pub.publish(title, content, cover_image, tags)
 pub.stop()
 ```
 
 关键设计决策：
-- **CDP 模式**：连接真实浏览器避免 `navigator.webdriver` 检测
-- **Shadow DOM 劫持**：`add_init_script` 强制 `attachShadow({mode:'open'})`
-- **持久化上下文**：`launch_persistent_context` 保存登录态
-- **平台差异**：各平台 DOM/流程不同，独立维护选择器
-- **`all` 命令**：一键同步发布到全部 6 个平台
+- 通过连接真实浏览器避免自动化检测
+- 持久化上下文保存登录态
+- 各平台 DOM/流程不同，独立维护选择器
+- `all` 命令一键同步发布到全部 6 个平台
 
 ## 安全警告
 
@@ -283,56 +281,10 @@ pub.stop()
 - 所有字节系平台（头条、抖音）风控极其严格，请用小号测试。
 - 详见顶部「⚠️ 封号风险警告」。
 
-## 下一步计划
-
-| 优先级 | 改进项 | 状态 |
-|--------|--------|------|
-| P0 | 中文输入改用 `keyboard.type()` 产生真实按键事件（替代 `insert_text`） | ✅ |
-| P0 | 按键间隔改用对数正态分布（替代均匀分布） | ✅ |
-| P1 | 模拟中文 IME 输入流程（compositionstart→compositionend） | ✅ |
-| P1 | 随机切 tab / 失焦 / 选中重写等"分心"行为 | ✅ |
-| P1 | 移除 playwright 依赖，只保留 patchright | ✅ |
-| P2 | Canvas/WebGL 指纹混淆 | ✅ |
-| P2 | WebRTC 禁用 | ✅ |
-| P2 | HTTP Client Hints 伪装 | ✅ |
-| P3 | 鼠标轨迹真实化（手抖噪声、过冲修正） | ⏳ |
-| P3 | IP 代理轮换 | ⏳ |
-| P3 | TLS 指纹对抗 | ⏳ |
-
-## 反检测体系（已完成）
-
-### 浏览器指纹
-- `navigator.webdriver` → false
-- `navigator.platform/plugins/languages/hardwareConcurrency/deviceMemory` 随机化
-- `screen.*` / `window.devicePixelRatio` / `window.chrome.runtime` 补全
-
-### 硬件指纹
-- Canvas 指纹噪声（mulberry32 PRNG + RGB 像素扰动）
-- WebGL VENDOR/RENDERER 伪造（3 套 NVIDIA/Intel/AMD 设备预设）
-- AudioContext 指纹噪声
-
-### 网络指纹
-- WebRTC 完全禁用
-- HTTP `Sec-CH-UA` / `Accept-Language` Client Hints 伪装
-- 时区 + 语言一致性校验
-
-### 行为指纹
-- `keyboard.type()` 真实按键事件（keydown/keyup 序列）
-- 按键间隔对数正态分布（中位数 25-67ms，含长尾）
-- 波浪式打字速度（开头慢→中间快→结尾慢）
-- 2% 概率打错删除模拟
-- 中文 IME composition 事件注入
-- 贝塞尔曲线鼠标轨迹
-- `browse_before/browse_after` 浏览行为
-- `distract_think` 走神停顿
-- `distract_mouse_leave` 鼠标移出窗口
-- `distract_edit_text` 选中重写
-- `distract_post_fill` 填充后停留校对
-
 ## 参考资料
 
 以下项目为本项目提供了灵感和思路：
 
-- [anything-analyzer](https://github.com/Mouseww/anything-analyzer) — 全场景抓包 + AI 协议逆向工具，其 `fingerprint/` 模块（设备预设、stealth 脚本、HTTP 头伪装）是本项目 stealth.py 的直接参考来源
-- [playwright-automation](https://github.com/iamtornado/playwright-automation) — Playwright 自动化示例集合，提供了 CDP 连接真实浏览器的基础架构思路
-- [浏览器自动化反检测技术总结](https://yousali.com/posts/20260213-browser-automation-anti-detection/) — 浏览器自动化反检测技术综述，覆盖指纹伪装、行为模拟、CDP 检测等多个维度
+- [anything-analyzer](https://github.com/Mouseww/anything-analyzer) — 全场景抓包 + AI 协议逆向工具
+- [playwright-automation](https://github.com/iamtornado/playwright-automation) — Playwright 自动化示例集合
+- [浏览器自动化反检测技术总结](https://yousali.com/posts/20260213-browser-automation-anti-detection/) — 浏览器自动化反检测相关技术参考
