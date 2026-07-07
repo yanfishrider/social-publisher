@@ -3,8 +3,11 @@ B站专栏发布器 — 通过 CDP 连接真实 Edge 浏览器
 编辑器在 iframe 内（ProseMirror），封面自动生成无需上传
 """
 from patchright.sync_api import sync_playwright, BrowserContext, Page, Frame
+import random
 from human_typing import human_type, human_click, jitter
 from human_browse import browse_before, browse_after
+from human_behavior import distract_think, distract_mouse_leave, distract_edit_text, distract_post_fill
+from stealth import generate_profile, build_stealth_script, build_extra_headers
 
 
 class BilibiliPublisher:
@@ -17,18 +20,28 @@ class BilibiliPublisher:
         self._browser = None
         self.context: BrowserContext | None = None
         self.page: Page | None = None
+        self._profile = None
 
     def start(self):
+        """连接真实 Edge 浏览器，注入 stealth 脚本"""
         self._playwright = sync_playwright().start()
         self._browser = self._playwright.chromium.connect_over_cdp(self.CDP_URL)
         self.context = self._browser.contexts[0]
+
+        # ── Stealth: 指纹伪装 ──
+        self._profile = generate_profile()
+        self.context.add_init_script(build_stealth_script(self._profile))
+        extra_headers = build_extra_headers(self._profile)
+        self.context.set_extra_http_headers(extra_headers)
+
+        # ── Shadow DOM 劫持 ──
         self.context.add_init_script("""
             const orig = Element.prototype.attachShadow;
             Element.prototype.attachShadow = function(init) {
                 return orig.call(this, { ...init, mode: 'open' });
             };
         """)
-        print("✅ 已连接 Edge + Shadow DOM 劫持")
+        print(f"✅ 已连接 Edge + Stealth (GPU: {self._profile.webgl_renderer[:40]}...)")
 
     def stop(self):
         """关闭页面并释放 Playwright 资源"""
@@ -80,12 +93,16 @@ class BilibiliPublisher:
             browse_before(self.page)
 
             self._set_title(title)
+            distract_think(self.page, duration_ms=random.randint(1000, 3000))
             self._set_content(content)
             if tags:
                 self._set_tags(tags)
-            
+            distract_edit_text(self.page)
+            distract_mouse_leave(self.page)
+
             # ── 浏览行为：假装校对 ──
             browse_after(self.page)
+            distract_post_fill(self.page)
 
             if self.auto_submit:
                 self._submit()

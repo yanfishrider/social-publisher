@@ -67,7 +67,7 @@ def _publish_bjh(config: PublishConfig, use_edge: bool, auto_submit: bool = True
     bjh_tags = list(config.tags)
 
     if config.content_file and len(content) > 500:
-        print("📝 Markdown 过长，自动转为纯文本段落...")
+        print("📝 内容过长，自动转为纯文本段落...")
         rewritten = rewrite_for_article(content)
         content = rewritten["body"]
         for t in rewritten["tags"]:

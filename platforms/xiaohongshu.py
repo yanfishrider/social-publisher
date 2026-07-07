@@ -2,9 +2,12 @@
 小红书图文发布器 — 通过 CDP 连接真实 Edge 浏览器
 不会被检测为自动化浏览器
 """
+import random
 from patchright.sync_api import sync_playwright, BrowserContext, Page
 from human_typing import human_type_on, human_click, jitter
 from human_browse import browse_before, browse_after
+from human_behavior import distract_think, distract_mouse_leave, distract_edit_text, distract_post_fill
+from stealth import generate_profile, build_stealth_script, build_extra_headers
 
 
 class XhsPublisher:
@@ -17,19 +20,28 @@ class XhsPublisher:
         self._browser = None
         self.context: BrowserContext | None = None
         self.page: Page | None = None
+        self._profile = None
 
     def start(self):
-        """连接真实 Edge 浏览器"""
+        """连接真实 Edge 浏览器，注入 stealth 脚本"""
         self._playwright = sync_playwright().start()
         self._browser = self._playwright.chromium.connect_over_cdp(self.CDP_URL)
         self.context = self._browser.contexts[0]
+
+        # ── Stealth: 指纹伪装 ──
+        self._profile = generate_profile()
+        self.context.add_init_script(build_stealth_script(self._profile))
+        extra_headers = build_extra_headers(self._profile)
+        self.context.set_extra_http_headers(extra_headers)
+
+        # ── Shadow DOM 劫持 ──
         self.context.add_init_script("""
             const orig = Element.prototype.attachShadow;
             Element.prototype.attachShadow = function(init) {
                 return orig.call(this, { ...init, mode: 'open' });
             };
         """)
-        print("✅ 已连接 Edge + Shadow DOM 劫持")
+        print(f"✅ 已连接 Edge + Stealth (GPU: {self._profile.webgl_renderer[:40]}...)")
 
     def stop(self):
         """关闭页面并释放 Playwright 资源"""
@@ -76,10 +88,15 @@ class XhsPublisher:
             self._upload(cover_image)
             self._wait_editor()
             self._set_title(title)
+            distract_think(self.page, duration_ms=random.randint(1000, 3000))
+
             self._set_body(description, tags)
+            distract_edit_text(self.page, self.page.locator("[contenteditable='true'], textarea").first)
+            distract_mouse_leave(self.page)
 
             # ── 浏览行为：假装校对新填的内容 ──
             browse_after(self.page)
+            distract_post_fill(self.page)
 
             if self.auto_submit:
                 self._publish()
@@ -110,7 +127,6 @@ class XhsPublisher:
     def _upload(self, path):
         print(f"🖼️ 上传: {path}")
         self.page.locator("input[type='file']").first.set_input_files(path)
-        # 小红书 SPA：上传图片后 React 重渲染，固定等待比 networkidle 更可靠
         self.page.wait_for_timeout(8000)
         print("  ✅")
 
@@ -118,26 +134,22 @@ class XhsPublisher:
         print("⏳ 等编辑器...")
         self.page.wait_for_selector("input[placeholder*='填写标题']", timeout=15000)
         self.page.wait_for_timeout(2000)
-        # 强制聚焦标题栏，确保键盘焦点在正确位置
         self.page.locator("input[placeholder*='填写标题']").first.focus()
         self.page.wait_for_timeout(1500)
         print("  ✅")
 
     def _set_title(self, title):
         if len(title) > 20:
-            # 智能截断：在空格/标点处断，不截半个词
             cut = title[:20]
-            # 回退到最后一个合适的断点
             for sep in [" — ", " - ", " ", "，", "。", "、"]:
                 idx = cut.rfind(sep)
-                if idx > 10:  # 至少保留10个字
+                if idx > 10:
                     cut = cut[:idx]
                     break
             title = cut
         print(f"📝 标题: {title}")
         el = self.page.locator("input[placeholder*='填写标题']").first
         human_click(self.page, el)
-        # SPA 可能在点击后触发重渲染导致焦点丢失，强制聚焦
         el.focus()
         self.page.wait_for_timeout(jitter(600))
         human_type_on(self.page, el, title, "xhs")
@@ -147,7 +159,6 @@ class XhsPublisher:
         print(f"📄 正文 ({len(text)}字)...")
         desc = self.page.locator("[contenteditable='true'], textarea").first
         human_click(self.page, desc)
-        # 强制聚焦，防止 SPA 重渲染导致键盘焦点跑偏
         desc.focus()
         self.page.wait_for_timeout(jitter(600))
         human_type_on(self.page, desc, text, "xhs")
@@ -162,7 +173,6 @@ class XhsPublisher:
 
     def _publish(self):
         print("🚀 发布...")
-        # Shadow DOM 已被劫持为 open，直接选择器
         btn = self.page.locator("button.ce-btn.bg-red")
         if btn.count() > 0:
             human_click(self.page, btn.first)

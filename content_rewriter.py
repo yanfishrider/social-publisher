@@ -171,7 +171,7 @@ def _smart_cut(text: str, limit: int) -> str:
 
 # ── 百家号 / 头条号 改写 ──────────────────────────────
 
-def rewrite_for_article(md_text: str) -> dict:
+def rewrite_for_article(md_text: str, title: str = "") -> dict:
     """
     将 Markdown 转为干净的长文段落，适合百家号、头条号。
 
@@ -179,7 +179,6 @@ def rewrite_for_article(md_text: str) -> dict:
     """
     lines = []
     in_table = False
-    skip_section = False  # 跳过目录/大纲等纯表格段
 
     for line in md_text.split("\n"):
         stripped = line.strip()
@@ -191,16 +190,8 @@ def rewrite_for_article(md_text: str) -> dict:
         # 二级标题
         if stripped.startswith("## "):
             heading = stripped[3:].strip()
-            # 跳过目录、课程大纲等细节段
-            if any(kw in heading for kw in ["目录", "课程大纲", "语文培优", "英语课程", "物理早培", "数学衔接"]):
-                skip_section = True
-                continue
-            skip_section = False
             lines.append("")
             lines.append(f"【{heading}】")
-            continue
-
-        if skip_section:
             continue
 
         # 三级标题
@@ -214,7 +205,7 @@ def rewrite_for_article(md_text: str) -> dict:
             in_table = True
             continue
 
-        # 表格行 → 跳过
+        # 表格行 → 转成列表项
         if stripped.startswith("|"):
             if not in_table:
                 continue
@@ -243,8 +234,6 @@ def rewrite_for_article(md_text: str) -> dict:
             lines.append(clean)
 
     body = "\n".join(lines)
-
-    title = "曼大优学宣传手册"
     tags = _extract_tags(body)
 
-    return {"title": title, "body": body, "tags": tags}
+    return {"title": title or "文章", "body": body, "tags": tags}

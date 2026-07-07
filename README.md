@@ -121,7 +121,7 @@ PDF 分为两种类型：
 
 | 平台 | 内容处理 | 触发条件 |
 |------|----------|----------|
-| 小红书 | `content_rewriter.py` 精简为 ~800 字短文案 | >500 字 |
+| 小红书 | `content_rewriter.py` 精简为 ~80 字短文案 | >500 字 |
 | 百家号 | `content_rewriter.py` 转为纯文本段落 | >500 字 |
 | 头条号 | `content_rewriter.py` 转为纯文本段落 | >500 字 |
 | B站专栏 | `content_rewriter.py` 转为纯文本段落 | >500 字 |
@@ -283,15 +283,54 @@ pub.stop()
 
 ## 下一步计划
 
-当前版本在对抗平台反自动化上仍有不足，计划改进：
-
 | 优先级 | 改进项 | 状态 |
 |--------|--------|------|
-| P0 | 中文输入改用 `keyboard.type()` 产生真实按键事件（替代 `insert_text`） | ⏳ |
-| P0 | 按键间隔改用对数正态分布（替代均匀分布） | ⏳ |
-| P1 | 模拟中文 IME 输入流程（compositionstart→compositionend） | ⏳ |
-| P1 | 随机切 tab / 失焦 / 选中重写等"分心"行为 | ⏳ |
-| P1 | 移除 playwright 依赖，只保留 patchright | ⏳ |
-| P2 | Canvas/WebGL 指纹混淆 | ⏳ |
-| P2 | WebRTC 禁用 | ⏳ |
-| P2 | 隐藏/随机化 CDP 调试端口 | ⏳ |
+| P0 | 中文输入改用 `keyboard.type()` 产生真实按键事件（替代 `insert_text`） | ✅ |
+| P0 | 按键间隔改用对数正态分布（替代均匀分布） | ✅ |
+| P1 | 模拟中文 IME 输入流程（compositionstart→compositionend） | ✅ |
+| P1 | 随机切 tab / 失焦 / 选中重写等"分心"行为 | ✅ |
+| P1 | 移除 playwright 依赖，只保留 patchright | ✅ |
+| P2 | Canvas/WebGL 指纹混淆 | ✅ |
+| P2 | WebRTC 禁用 | ✅ |
+| P2 | HTTP Client Hints 伪装 | ✅ |
+| P3 | 鼠标轨迹真实化（手抖噪声、过冲修正） | ⏳ |
+| P3 | IP 代理轮换 | ⏳ |
+| P3 | TLS 指纹对抗 | ⏳ |
+
+## 反检测体系（已完成）
+
+### 浏览器指纹
+- `navigator.webdriver` → false
+- `navigator.platform/plugins/languages/hardwareConcurrency/deviceMemory` 随机化
+- `screen.*` / `window.devicePixelRatio` / `window.chrome.runtime` 补全
+
+### 硬件指纹
+- Canvas 指纹噪声（mulberry32 PRNG + RGB 像素扰动）
+- WebGL VENDOR/RENDERER 伪造（3 套 NVIDIA/Intel/AMD 设备预设）
+- AudioContext 指纹噪声
+
+### 网络指纹
+- WebRTC 完全禁用
+- HTTP `Sec-CH-UA` / `Accept-Language` Client Hints 伪装
+- 时区 + 语言一致性校验
+
+### 行为指纹
+- `keyboard.type()` 真实按键事件（keydown/keyup 序列）
+- 按键间隔对数正态分布（中位数 25-67ms，含长尾）
+- 波浪式打字速度（开头慢→中间快→结尾慢）
+- 2% 概率打错删除模拟
+- 中文 IME composition 事件注入
+- 贝塞尔曲线鼠标轨迹
+- `browse_before/browse_after` 浏览行为
+- `distract_think` 走神停顿
+- `distract_mouse_leave` 鼠标移出窗口
+- `distract_edit_text` 选中重写
+- `distract_post_fill` 填充后停留校对
+
+## 参考资料
+
+以下项目为本项目提供了灵感和思路：
+
+- [anything-analyzer](https://github.com/Mouseww/anything-analyzer) — 全场景抓包 + AI 协议逆向工具，其 `fingerprint/` 模块（设备预设、stealth 脚本、HTTP 头伪装）是本项目 stealth.py 的直接参考来源
+- [playwright-automation](https://github.com/iamtornado/playwright-automation) — Playwright 自动化示例集合，提供了 CDP 连接真实浏览器的基础架构思路
+- [浏览器自动化反检测技术总结](https://yousali.com/posts/20260213-browser-automation-anti-detection/) — 浏览器自动化反检测技术综述，覆盖指纹伪装、行为模拟、CDP 检测等多个维度

@@ -136,7 +136,6 @@ h1 { font-size:22px; margin-bottom:20px; color:#1a1a1a; }
 
 <script>
 let contentFileName = '';
-let manualSessions = [];  // 手动模式下待关闭的会话ID列表
 
 function onContentFile(input) {
   if (input.files[0]) {
@@ -217,7 +216,6 @@ async function publish() {
   if (!contentFile && !contentText) return alert('请选择文件或粘贴内容');
 
   const manual = document.getElementById('manualMode').checked;
-  manualSessions = [];
 
   // 显示日志区
   document.getElementById('logCard').style.display = 'block';
@@ -243,10 +241,6 @@ async function publish() {
             const data = JSON.parse(line.slice(6));
             const cls = data.error ? 'error' : (data.done ? 'success' : '');
             addLog((data.error ? '❌ ' : '') + data.msg, cls);
-            if (manual && data.msg && data.msg.includes('会话ID:')) {
-              const sid = data.msg.match(/会话ID:\s*(\S+)/);
-              if (sid) manualSessions.push({platform: data.platform || '', id: sid[1]});
-            }
           } catch(e) {
             addLog(line.slice(6));
           }
@@ -257,9 +251,8 @@ async function publish() {
     addLog('连接失败: ' + e.message, 'error');
   }
 
-  if (manual && manualSessions.length > 0) {
+  if (manual) {
     addLog('\n⏸️  请在浏览器中手动点击各平台发布按钮', 'success');
-    showManualFinish();
   } else {
     addLog('\n✅ 全部发布任务完成', 'success');
   }
@@ -267,21 +260,8 @@ async function publish() {
 }
 
 async function finishPublish() {
-  for (const s of manualSessions) {
-    addLog(`🔒 关闭 ${s.platform} (${s.id})...`);
-    try {
-      const fd = new FormData();
-      fd.append('session_id', s.id);
-      const resp = await fetch('/finish', { method:'POST', body:fd });
-      const data = await resp.json();
-      addLog(data.ok ? `  ✅ 已关闭` : `  ❌ ${data.msg}`);
-    } catch(e) {
-      addLog(`  ❌ ${e.message}`);
-    }
-  }
-  addLog('\n✅ 全部完成', 'success');
+  addLog('✅ 全部完成', 'success');
   document.getElementById('finishBtn').style.display = 'none';
-  manualSessions = [];
 }
 
 function showManualFinish() {

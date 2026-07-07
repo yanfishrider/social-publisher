@@ -1,46 +1,63 @@
 """
-真人打字模拟 — 各平台差异化参数 + 随机抖动
-消除"所有平台完全一致的打字模式"这个反爬指纹
+真人打字模拟 — keyboard.type() 真实按键 + 对数正态分布延迟
+Patchright 的 keyboard.type() 产生真实 keydown/keyup 事件序列，替代 insert_text
 """
 import random
+import math
 
 
-# ── 平台差异化打字 profile ──
+# ════════════════════════════════════════════════════════════════
+# 对数正态分布（替代均匀分布）
+# ════════════════════════════════════════════════════════════════
+
+def _lognormal_delay(mu: float, sigma: float) -> int:
+    """
+    对数正态分布延迟。
+    - mu=3.5, sigma=0.4 → 中位数 ~33ms，均值 ~36ms，长尾 ~150ms
+    - mu=4.2, sigma=0.5 → 中位数 ~67ms，均值 ~76ms，长尾 ~300ms
+    """
+    val = random.lognormvariate(mu, sigma)
+    return max(5, min(int(val), 500))  # 夹在 5~500ms
+
+
+# ════════════════════════════════════════════════════════════════
+# 平台差异化打字 Profile
+# ════════════════════════════════════════════════════════════════
 
 class TypingProfile:
-    """打字行为参数范围"""
-    def __init__(self, char_delay, para_pause, think_every, think_pause):
-        self.char_delay = char_delay      # (min_ms, max_ms) 每字延迟
-        self.para_pause = para_pause      # (min_ms, max_ms) 段落间停顿
-        self.think_every = think_every    # (min, max) 每 N 段"思考"一次
-        self.think_pause = think_pause    # (min_ms, max_ms) "思考"停顿时长
+    """打字行为参数"""
+    def __init__(self, mu: float, sigma: float,
+                 para_pause: tuple[int, int],
+                 think_every: tuple[int, int],
+                 think_pause: tuple[int, int]):
+        self.mu = mu                  # 对数正态 μ
+        self.sigma = sigma            # 对数正态 σ
+        self.para_pause = para_pause  # 段落间停顿 (min, max) ms
+        self.think_every = think_every  # 每 N 段"思考"一次
+        self.think_pause = think_pause  # "思考"停顿时长 (min, max) ms
 
 
 PROFILES = {
-    # 字节跳动（抖音 + 头条）— 反爬最严：打字偏慢、停顿偏长
     "byte_dance": TypingProfile(
-        char_delay=(50, 120),
+        mu=4.2, sigma=0.5,          # 慢速：中位数 ~67ms
         para_pause=(200, 800),
         think_every=(3, 7),
         think_pause=(500, 2000),
     ),
-    # 百度百家号 — 反爬较高
     "baidu": TypingProfile(
-        char_delay=(40, 100),
+        mu=3.9, sigma=0.45,         # 中速：中位数 ~49ms
         para_pause=(150, 600),
         think_every=(4, 8),
         think_pause=(400, 1500),
     ),
-    # 小红书 — 短内容，打字可以快一点
     "xhs": TypingProfile(
-        char_delay=(15, 40),
+        mu=3.2, sigma=0.35,         # 较快：中位数 ~25ms
         para_pause=(100, 400),
         think_every=(5, 10),
         think_pause=(300, 1000),
     ),
-    # B站 / 微博 — 中等反爬
     "standard": TypingProfile(
-        char_delay=(30, 80),
+        mu=3.6, sigma=0.4,          # 标准：中位数 ~37ms
         para_pause=(100, 500),
         think_every=(5, 10),
         think_pause=(300, 1200),
@@ -48,108 +65,56 @@ PROFILES = {
 }
 
 
-def _r(range_tuple: tuple[int, int]) -> int:
-    """从范围中取随机整数"""
-    return random.randint(range_tuple[0], range_tuple[1])
+def _ri(rng: tuple[int, int]) -> int:
+    return random.randint(rng[0], rng[1])
 
 
-def _char_delay(cfg: TypingProfile) -> int:
-    """单字延迟：在 profile 范围内随机，约 3% 概率触发微卡顿"""
-    delay = _r(cfg.char_delay)
-    if random.random() < 0.03:
-        delay += random.randint(100, 300)  # 偶尔手滑/想词
-    return delay
-
-
-# ── 打字速度韵律 ──
+# ════════════════════════════════════════════════════════════════
+# 打字速度韵律（波浪式）
+# ════════════════════════════════════════════════════════════════
 
 def _speed_wave(i: int, total: int) -> float:
     """
-    模拟打字速度的波浪式变化：开始慢（找节奏）、中间快、结尾又慢。
-    返回速度倍率 (0.7 ~ 1.5)，乘以基础延迟。
+    模拟打字速度波浪：开头慢→中间快→结尾慢。
+    返回速度倍率 0.7 ~ 1.5
     """
     progress = i / max(total, 1)
-    # 正弦波 + 线性减速尾部
-    wave = 1.0 + 0.3 * (__import__("math").sin(progress * __import__("math").pi * 3))
-    # 最后 15% 减速
+    wave = 1.0 + 0.3 * math.sin(progress * math.pi * 3)
     if progress > 0.85:
         wave += (progress - 0.85) * 2.0
     return max(0.7, min(1.5, wave))
 
 
-# ── 打错删除模拟 ──
+# ════════════════════════════════════════════════════════════════
+# 打错删除模拟
+# ════════════════════════════════════════════════════════════════
 
 def _maybe_typo() -> bool:
-    """约 2% 概率触发打错"""
     return random.random() < 0.02
 
 
-# ── 鼠标贝塞尔曲线 ──
-
-def _bezier_point(t: float, p0, p1, p2, p3) -> tuple[float, float]:
-    """三次贝塞尔曲线上的点"""
-    u = 1 - t
-    x = u**3 * p0[0] + 3*u**2*t * p1[0] + 3*u*t**2 * p2[0] + t**3 * p3[0]
-    y = u**3 * p0[1] + 3*u**2*t * p1[1] + 3*u*t**2 * p2[1] + t**3 * p3[1]
-    return (x, y)
-
-
-# ── 鼠标移动模拟 ──
-
-def human_move(page, locator) -> tuple[float, float]:
-    """
-    贝塞尔曲线轨迹移动鼠标到元素内随机位置。
-    返回目标坐标 (tx, ty)。
-    """
-    box = locator.bounding_box()
-    if not box:
-        return (0, 0)
-    
-    # 目标：元素内随机位置
-    tx = box['x'] + box['width'] * random.uniform(0.2, 0.8)
-    ty = box['y'] + box['height'] * random.uniform(0.2, 0.8)
-    
-    # 起点：当前鼠标位置或随机起点
-    try:
-        vp = page.viewport_size or {"width": 1920, "height": 1080}
-    except Exception:
-        vp = {"width": 1920, "height": 1080}
-    sx = random.randint(100, vp["width"] - 100)
-    sy = random.randint(100, vp["height"] - 200)
-    
-    # 贝塞尔控制点：偏向目标方向加随机偏移
-    cp1x = sx + (tx - sx) * random.uniform(0.3, 0.5) + random.randint(-80, 80)
-    cp1y = sy + (ty - sy) * random.uniform(0.1, 0.3) + random.randint(-60, 60)
-    cp2x = sx + (tx - sx) * random.uniform(0.6, 0.8) + random.randint(-50, 50)
-    cp2y = sy + (ty - sy) * random.uniform(0.5, 0.7) + random.randint(-40, 40)
-    
-    steps = random.randint(15, 30)
-    for i in range(steps + 1):
-        t = i / steps
-        x, y = _bezier_point(t, (sx, sy), (cp1x, cp1y), (cp2x, cp2y), (tx, ty))
-        page.mouse.move(x, y)
-        page.wait_for_timeout(random.randint(5, 15))
-    
-    page.wait_for_timeout(random.randint(30, 80))
-    return (tx, ty)
+_SIMILAR_KEYS = {
+    'a': 's', 's': 'a', 'd': 'f', 'f': 'd', 'g': 'h', 'h': 'g',
+    'j': 'k', 'k': 'j', 'l': 'k', 'q': 'w', 'w': 'q', 'e': 'r',
+    'r': 'e', 't': 'y', 'y': 't', 'u': 'i', 'i': 'u', 'o': 'p',
+    'p': 'o', 'z': 'x', 'x': 'z', 'c': 'v', 'v': 'c', 'b': 'n',
+    'n': 'b', 'm': 'n',
+    '，': '。', '。': '，', '的': '地', '地': '的', '是': '时', '了': '啦',
+}
 
 
-def human_click(page, locator, force: bool = False, timeout: int | None = None):
-    """模拟真人点击：先非直线移动鼠标到元素，稍停，再点击"""
-    human_move(page, locator)
-    locator.click(force=force, timeout=timeout)
+def _similar_key(ch: str) -> str:
+    return _SIMILAR_KEYS.get(ch, ch)
 
 
-# ── 公共 API ──
+# ════════════════════════════════════════════════════════════════
+# 公共 API — 真实按键版本
+# ════════════════════════════════════════════════════════════════
 
 def human_type(page, content: str, profile: str = "standard"):
     """
-    模拟真人逐字键入正文 — 每个字独立随机延迟。
-    
-    Args:
-        page: Playwright Page 对象
-        content: 要输入的内容
-        profile: 平台 profile（byte_dance / baidu / xhs / standard）
+    模拟真人逐字键入 — 使用 keyboard.type() 产生真实 keydown/keyup 事件。
+    每个字独立随机延迟（对数正态分布）。
     """
     cfg = PROFILES.get(profile, PROFILES["standard"])
     paragraphs = [p for p in content.split("\n") if p.strip()]
@@ -157,25 +122,108 @@ def human_type(page, content: str, profile: str = "standard"):
     next_think = random.randint(*cfg.think_every)
 
     for i, paragraph in enumerate(paragraphs):
-        # 逐字独立随机延迟
-        _type_chars(page, paragraph, cfg)
+        _type_paragraph(page, paragraph, cfg)
 
-        # 段落间停顿
         if i < total - 1:
-            page.wait_for_timeout(_r(cfg.para_pause))
+            page.wait_for_timeout(_ri(cfg.para_pause))
             page.keyboard.press("Shift+Enter")
             page.wait_for_timeout(jitter(200))
 
-        # 随机间隔的"思考"停顿
         if (i + 1) == next_think:
-            page.wait_for_timeout(_r(cfg.think_pause))
+            page.wait_for_timeout(_ri(cfg.think_pause))
             next_think = (i + 1) + random.randint(*cfg.think_every)
 
 
+def _type_paragraph(page, text: str, cfg: TypingProfile):
+    """逐字键入段落"""
+    _type_chars(page, text, cfg)
+
+
+def _type_paragraph_on(page, locator, text: str, cfg: TypingProfile):
+    """locator 版逐字键入（先聚焦元素）"""
+    locator.focus()
+    page.wait_for_timeout(jitter(200))
+    _type_chars(page, text, cfg)
+
+
+def _type_chars(page, text: str, cfg: TypingProfile):
+    """逐字键入公共实现 — keyboard.type() + 对数正态延迟 + 打错删除"""
+    for ch in text:
+        # 中文输入法模拟：先发 composition 事件
+        if _is_cjk(ch):
+            _emit_ime(page, ch)
+
+        if _maybe_typo():
+            wrong = _similar_key(ch)
+            page.keyboard.type(wrong, delay=_lognormal_delay(cfg.mu * 0.8, cfg.sigma))
+            page.wait_for_timeout(random.randint(100, 300))
+            page.keyboard.press("Backspace")
+            page.wait_for_timeout(random.randint(80, 200))
+
+        page.keyboard.type(ch, delay=_lognormal_delay(cfg.mu, cfg.sigma))
+
+
+# ════════════════════════════════════════════════════════════════
+# IME 输入法事件模拟
+# ════════════════════════════════════════════════════════════════
+
+def _is_cjk(ch: str) -> bool:
+    """判断是否为 CJK 字符（中文/日文/韩文）"""
+    cp = ord(ch)
+    return (
+        0x4E00 <= cp <= 0x9FFF   # CJK Unified Ideographs
+        or 0x3400 <= cp <= 0x4DBF  # CJK Extension A
+        or 0x20000 <= cp <= 0x2A6DF  # CJK Extension B
+        or 0xF900 <= cp <= 0xFAFF  # CJK Compatibility
+        or 0x3000 <= cp <= 0x303F  # CJK Symbols/Punctuation
+        or 0xFF00 <= cp <= 0xFFEF  # Halfwidth/Fullwidth Forms
+    )
+
+
+def _emit_ime(page, ch: str):
+    """
+    模拟中文输入法的 composition 事件序列。
+    通过 page.evaluate() 在焦点元素上手动派发。
+    """
+    pinyin = _char_to_pinyin(ch)
+    try:
+        page.evaluate(f"""
+            (() => {{
+                const el = document.activeElement || document.body;
+                el.dispatchEvent(new CompositionEvent('compositionstart', {{
+                    data: '{pinyin}', bubbles: true
+                }}));
+                el.dispatchEvent(new CompositionEvent('compositionupdate', {{
+                    data: '{pinyin}', bubbles: true
+                }}));
+                // compositionend 在字符输入后由浏览器自然触发
+            }})();
+        """)
+    except Exception:
+        pass
+
+
+def _char_to_pinyin(ch: str) -> str:
+    """返回字符的模拟拼音（不需要准确，只需有数据）"""
+    # 不需要真实的拼音映射，只要每次不同即可
+    import hashlib
+    h = hashlib.md5(ch.encode()).hexdigest()[:4]
+    consonants = ['n', 'h', 'sh', 'zh', 'b', 'p', 'm', 'f', 'd', 't', 'l', 'g', 'k', 'j', 'q', 'x', 'r', 'z', 'c', 's', 'y', 'w']
+    vowels = ['i', 'a', 'o', 'e', 'u', 'ao', 'ai', 'ei', 'ou', 'iu', 'ie', 'ue', 'an', 'en', 'in', 'ang', 'eng', 'ing', 'ong']
+    c_idx = int(h[0:2], 16) % len(consonants)
+    v_idx = int(h[2:4], 16) % len(vowels)
+    return consonants[c_idx] + vowels[v_idx]
+
+
+# ════════════════════════════════════════════════════════════════
+# 针对 contenteditable / 特殊编辑器的版本
+# ════════════════════════════════════════════════════════════════
+
 def human_type_on(page, locator, content: str, profile: str = "xhs"):
     """
-    在指定 locator 上逐字输入（小红书等需要精确 locator 的平台）。
-    每个字独立随机延迟。
+    在指定 locator 上逐字输入（小红书等需要先 focus 再 type 的平台）。
+    先用 keyboard.type() 产生真实按键，如果平台用 contenteditable
+    则通过 CDP 补发 composition 事件模拟 IME。
     """
     cfg = PROFILES.get(profile, PROFILES["xhs"])
     paragraphs = [p for p in content.split("\n") if p.strip()]
@@ -183,77 +231,102 @@ def human_type_on(page, locator, content: str, profile: str = "xhs"):
     next_think = random.randint(*cfg.think_every)
 
     for i, paragraph in enumerate(paragraphs):
-        _type_chars_on(page, locator, paragraph, cfg)
+        _type_paragraph_on(page, locator, paragraph, cfg)
 
         if i < total - 1:
-            page.wait_for_timeout(_r(cfg.para_pause))
+            page.wait_for_timeout(_ri(cfg.para_pause))
             page.keyboard.press("Shift+Enter")
             page.wait_for_timeout(jitter(200))
 
         if (i + 1) == next_think:
-            page.wait_for_timeout(_r(cfg.think_pause))
+            page.wait_for_timeout(_ri(cfg.think_pause))
             next_think = (i + 1) + random.randint(*cfg.think_every)
 
 
-def _type_chars(page, text: str, cfg: TypingProfile):
-    """逐字键入 — 波浪式速度 + 随机打错删除"""
-    total = len(text)
-    for i, ch in enumerate(text):
-        # 速度韵律：波浪式快慢变化
-        wave = _speed_wave(i, total)
-        base_delay = _char_delay(cfg)
-        delay = int(base_delay * wave)
-        
-        # 打错删除模拟
-        if _maybe_typo():
-            # 敲一个错字
-            wrong = _similar_key(ch)
-            page.keyboard.insert_text(wrong)
-            page.wait_for_timeout(random.randint(100, 300))
-            page.keyboard.press("Backspace")
-            page.wait_for_timeout(random.randint(80, 200))
-        
-        page.keyboard.insert_text(ch)
-        page.wait_for_timeout(delay)
+
+# ════════════════════════════════════════════════════════════════
+# 鼠标相关（保持不变）
+# ════════════════════════════════════════════════════════════════
+
+def _bezier_point(t: float, p0, p1, p2, p3) -> tuple[float, float]:
+    u = 1 - t
+    x = u**3 * p0[0] + 3*u**2*t * p1[0] + 3*u*t**2 * p2[0] + t**3 * p3[0]
+    y = u**3 * p0[1] + 3*u**2*t * p1[1] + 3*u*t**2 * p2[1] + t**3 * p3[1]
+    return (x, y)
 
 
-def _similar_key(ch: str) -> str:
-    """返回一个相近的键（模拟打错）"""
-    nearby = {
-        'a': 's', 's': 'a', 'd': 'f', 'f': 'd', 'g': 'h', 'h': 'g',
-        'j': 'k', 'k': 'j', 'l': 'k', 'q': 'w', 'w': 'q', 'e': 'r',
-        'r': 'e', 't': 'y', 'y': 't', 'u': 'i', 'i': 'u', 'o': 'p',
-        'p': 'o', 'z': 'x', 'x': 'z', 'c': 'v', 'v': 'c', 'b': 'n',
-        'n': 'b', 'm': 'n', '1': '2', '2': '1', '3': '4', '4': '3',
-        '，': '。', '。': '，', '的': '地', '地': '的', '是': '时', '了': '啦',
-    }
-    return nearby.get(ch, ch)
+def human_move(page, locator) -> tuple[float, float]:
+    """
+    贝塞尔曲线 + 手抖噪声 + 过冲修正。
+    模拟真人鼠标移动的微颤和不精确性。
+    """
+    box = locator.bounding_box()
+    if not box:
+        return (0, 0)
+
+    tx = box['x'] + box['width'] * random.uniform(0.2, 0.8)
+    ty = box['y'] + box['height'] * random.uniform(0.2, 0.8)
+
+    try:
+        vp = page.viewport_size or {"width": 1920, "height": 1080}
+    except Exception:
+        vp = {"width": 1920, "height": 1080}
+    sx = random.randint(100, vp["width"] - 100)
+    sy = random.randint(100, vp["height"] - 200)
+
+    cp1x = sx + (tx - sx) * random.uniform(0.3, 0.5) + random.randint(-80, 80)
+    cp1y = sy + (ty - sy) * random.uniform(0.1, 0.3) + random.randint(-60, 60)
+    cp2x = sx + (tx - sx) * random.uniform(0.6, 0.8) + random.randint(-50, 50)
+    cp2y = sy + (ty - sy) * random.uniform(0.5, 0.7) + random.randint(-40, 40)
+
+    # 过冲：约 60% 概率轻微超出目标再拉回
+    overshoot = random.random() < 0.6
+    if overshoot:
+        overshoot_dist = random.randint(5, 15)
+        angle = math.atan2(ty - sy, tx - sx)
+        ox = tx + math.cos(angle) * overshoot_dist
+        oy = ty + math.sin(angle) * overshoot_dist
+    else:
+        ox, oy = tx, ty
+
+    steps = random.randint(20, 40)
+    for i in range(steps + 1):
+        t = i / steps
+
+        # 贝塞尔基础位置
+        bx, by = _bezier_point(t, (sx, sy), (cp1x, cp1y), (cp2x, cp2y), (ox, oy))
+
+        # 手抖噪声：高频低幅，接近目标时振幅增大（紧张）
+        progress = t
+        tremor_amp = 1.0 + progress * 1.5  # 越接近目标抖动越大
+        noise_x = (random.random() - 0.5) * 2 * tremor_amp
+        noise_y = (random.random() - 0.5) * 2 * tremor_amp
+
+        page.mouse.move(bx + noise_x, by + noise_y)
+        page.wait_for_timeout(random.randint(5, 12))
+
+    # 过冲后拉回
+    if overshoot:
+        page.wait_for_timeout(random.randint(40, 100))
+        # 拉回过程也用微颤
+        pullback_steps = random.randint(5, 10)
+        for i in range(pullback_steps + 1):
+            t = i / pullback_steps
+            px = ox + (tx - ox) * t
+            py = oy + (ty - oy) * t
+            noise_x = (random.random() - 0.5) * 1.5
+            noise_y = (random.random() - 0.5) * 1.5
+            page.mouse.move(px + noise_x, py + noise_y)
+            page.wait_for_timeout(random.randint(3, 8))
+
+    page.wait_for_timeout(random.randint(30, 80))
+    return (tx, ty)
 
 
-def _type_chars_on(page, locator, text: str, cfg: TypingProfile):
-    """逐字键入 — 波浪式速度 + 随机打错删除（locator 版本）"""
-    total = len(text)
-    for i, ch in enumerate(text):
-        wave = _speed_wave(i, total)
-        base_delay = _char_delay(cfg)
-        delay = int(base_delay * wave)
-        
-        if _maybe_typo():
-            wrong = _similar_key(ch)
-            page.keyboard.insert_text(wrong)
-            page.wait_for_timeout(random.randint(100, 300))
-            page.keyboard.press("Backspace")
-            page.wait_for_timeout(random.randint(80, 200))
-        
-        page.keyboard.insert_text(ch)
-        page.wait_for_timeout(delay)
+def human_click(page, locator, force=False, timeout=None):
+    human_move(page, locator)
+    locator.click(force=force, timeout=timeout)
 
 
 def jitter(base: int, pct: float = 0.3) -> int:
-    """给固定值加 ±pct% 随机抖动"""
     return base + random.randint(-int(base * pct), int(base * pct))
-
-
-def random_wait(page, base_ms: int, pct: float = 0.3):
-    """固定等待 + 随机抖动的便捷方法"""
-    page.wait_for_timeout(jitter(base_ms, pct))
