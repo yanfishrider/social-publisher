@@ -32,3 +32,4 @@ content/*
 uploads/
 publish_history.json
 .acknowledged
+ANTI_DETECTION.md
