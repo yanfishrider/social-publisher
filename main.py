@@ -14,6 +14,7 @@ from platforms.bilibili import BilibiliPublisher
 from platforms.douyin import DouyinPublisher
 from platforms.weibo import WeiboPublisher
 from content_rewriter import rewrite_for_xhs, rewrite_for_article
+from safety_gate import check_acknowledgment
 
 
 def _publish_xhs(config: PublishConfig, use_edge: bool, auto_submit: bool = True):
@@ -295,6 +296,7 @@ def cmd_login(args):
 
 
 def main():
+    check_acknowledgment()
     parser = argparse.ArgumentParser(description="多平台社交媒体自动发布工具")
     sub = parser.add_subparsers(dest="command")
 

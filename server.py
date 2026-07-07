@@ -18,8 +18,12 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from image_utils import compress_image
 from content_rewriter import rewrite_for_xhs, rewrite_for_article
 from rate_limiter import can_publish, record as record_publish
+from safety_gate import check_acknowledgment
 
 app = FastAPI(title="社交发布工具")
+
+# ── 启动时检查 ──
+check_acknowledgment()
 
 PUBLISHERS = {
     "weibo":      ("weibo",      rewrite_for_article, 32),

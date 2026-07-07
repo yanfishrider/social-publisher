@@ -31,3 +31,4 @@ content/*
 *.tar.gz
 uploads/
 publish_history.json
+.acknowledged
