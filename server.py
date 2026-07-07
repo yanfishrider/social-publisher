@@ -22,6 +22,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from config import PublishConfig
 from image_utils import compress_image
 from content_rewriter import rewrite_for_xhs, rewrite_for_article
+from rate_limiter import can_publish, record as record_publish
 
 app = FastAPI(title="社交发布工具")
 
@@ -129,6 +130,12 @@ async def publish(
 
                 send(f"📄 标题: {title_used} | 正文: {len(body)}字", platform=platform)
 
+                # 频率控制
+                ok, reason = can_publish(platform)
+                if not ok:
+                    send(f"⏭️ 跳过: {reason}", platform=platform)
+                    continue
+
                 # 封面压缩
                 final_cover = cover_path
                 if final_cover:
@@ -163,8 +170,8 @@ async def publish(
 
                 worker_id = None
                 if manual:
-                    worker_id = uuid.uuid4().hex[:8]
-                    _active_workers[worker_id] = proc
+                    # 手动模式：不再跟踪 worker ID（worker 填完即断 CDP 退出）
+                    pass
 
                 # 逐行读取子进程输出
                 for line in proc.stdout:
@@ -173,23 +180,27 @@ async def publish(
                         continue
                     try:
                         msg = json.loads(line)
-                        # 手动模式注入 worker ID
-                        if manual and msg.get("done") is False and "会话ID" not in msg.get("msg", ""):
-                            msg["msg"] += f" [会话ID: {worker_id}]"
                         send(**msg)
+                        # 手动模式：worker 已填完，跳出循环继续下一个平台
+                        if manual and msg.get("done"):
+                            break
                     except json.JSONDecodeError:
                         send(f"  {line}", platform=platform)
 
-                # 检查 stderr
-                stderr_output = proc.stderr.read()
-                if stderr_output.strip():
-                    for line in stderr_output.strip().split("\n"):
-                        line = line.strip()
-                        if line:
-                            send(f"  [stderr] {line}", platform=platform)
-
-                if not manual:
+                if manual:
+                    # 手动模式：不等待，worker 留在 _active_workers 供后续 /finish
+                    # SSE done 信号由 finally 块统一发送
+                    pass
+                else:
+                    # 自动模式：读 stderr 后等进程结束
+                    stderr_output = proc.stderr.read()
+                    if stderr_output.strip():
+                        for line in stderr_output.strip().split("\n"):
+                            line = line.strip()
+                            if line:
+                                send(f"  [stderr] {line}", platform=platform)
                     proc.wait()
+                    record_publish(platform, title_used)
 
         except Exception as e:
             send(f"❌ {e}", error=True, done=True)
@@ -231,6 +242,15 @@ async def finish(session_id: str = Form(...)):
             proc.kill()
         return {"ok": True, "msg": "已关闭"}
     return {"ok": False, "msg": "会话不存在或已过期"}
+
+
+# ── 频率统计 ──
+
+@app.get("/stats")
+async def stats():
+    """查看各平台发布统计"""
+    from rate_limiter import get_stats
+    return get_stats()
 
 
 # ── 启动 ──

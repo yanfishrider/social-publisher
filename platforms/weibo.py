@@ -4,6 +4,7 @@ ProseMirror 编辑器，支持 Markdown
 """
 from patchright.sync_api import sync_playwright, BrowserContext, Page
 from human_typing import human_type, human_click, jitter
+from human_browse import browse_before, browse_after
 
 
 class WeiboPublisher:
@@ -67,12 +68,18 @@ class WeiboPublisher:
                 print("⚠️ 未登录"); return False
             print("✅ 已登录")
 
+            # ── 浏览行为：假装看页面 ──
+            browse_before(self.page)
+
             self._wait_editor()
             self._set_title(title)
             self._set_content(content)
 
             if cover_image:
                 self._set_cover(cover_image)
+
+            # ── 浏览行为：假装校对 ──
+            browse_after(self.page)
 
             if self.auto_submit:
                 self._submit()

@@ -4,6 +4,7 @@
 """
 from patchright.sync_api import sync_playwright, BrowserContext, Page
 from human_typing import human_type, human_click, jitter
+from human_browse import browse_before, browse_after
 
 
 class DouyinPublisher:
@@ -66,6 +67,9 @@ class DouyinPublisher:
                 print("⚠️ 未登录"); return False
             print("✅ 已登录")
 
+            # ── 浏览行为：假装看页面 ──
+            browse_before(self.page)
+
             # 1. 上传图片 → 进入编辑页
             self._upload_image(cover_image)
 
@@ -75,6 +79,9 @@ class DouyinPublisher:
             if tags:
                 self._set_tags(tags)
             
+            # ── 浏览行为：假装校对 ──
+            browse_after(self.page)
+
             if self.auto_submit:
                 self._submit()
                 print("🎉 发布成功！")

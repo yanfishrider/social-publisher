@@ -4,6 +4,7 @@
 """
 from patchright.sync_api import sync_playwright, BrowserContext, Page
 from human_typing import human_type_on, human_click, jitter
+from human_browse import browse_before, browse_after
 
 
 class XhsPublisher:
@@ -68,11 +69,17 @@ class XhsPublisher:
                 return False
             print("✅ 已登录")
 
+            # ── 浏览行为：假装看页面，不急着操作 ──
+            browse_before(self.page)
+
             self._switch_tab()
             self._upload(cover_image)
             self._wait_editor()
             self._set_title(title)
             self._set_body(description, tags)
+
+            # ── 浏览行为：假装校对新填的内容 ──
+            browse_after(self.page)
 
             if self.auto_submit:
                 self._publish()

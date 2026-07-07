@@ -59,8 +59,7 @@ def main():
                 }))
                 print(json.dumps({"msg": "", "done": True}))
                 sys.stdout.flush()
-                # 等 server 发 close 信号
-                sys.stdin.readline()
+                # 手动模式：断开 CDP（保留 Edge 页面），不阻塞
             else:
                 print(json.dumps({
                     "msg": "🎉 发布成功！",
@@ -81,11 +80,21 @@ def main():
         }))
         traceback.print_exc(file=sys.stderr)
     finally:
-        if pub and not manual:
-            pub.stop()
-        elif pub and manual:
-            # 收到 close 信号后才关闭
-            pub.stop()
+        if pub:
+            if manual:
+                # 手动模式：只断开 CDP，不关闭 Edge 页面
+                if pub._browser:
+                    try:
+                        pub._browser.close()
+                    except Exception:
+                        pass
+                if pub._playwright:
+                    try:
+                        pub._playwright.stop()
+                    except Exception:
+                        pass
+            else:
+                pub.stop()
 
     sys.stdout.flush()
 

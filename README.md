@@ -143,15 +143,23 @@ uv run python main.py publish all --use-edge \
 ```
 social-publisher/
 ├── main.py                  # CLI 入口 (login + publish)
+├── server.py                # FastAPI Web 界面 + SSE 实时日志
+├── publish_worker.py        # 子进程发布 worker（隔离 Playwright）
 ├── config.py                # 配置加载 (PublishConfig dataclass)
 ├── browser_manager.py       # 浏览器生命周期管理
 ├── image_utils.py           # PIL 图片压缩
+├── human_typing.py          # 真人打字模拟（逐字+打错+贝塞尔速度）
+├── human_browse.py          # 浏览行为模拟（滚动/停留/鼠标移动）
+├── rate_limiter.py          # 频率控制（防封号）
 ├── pdf_to_markdown.py       # PDF → Markdown 转换工具
 ├── docx_to_markdown.py      # DOCX → Markdown 转换工具
 ├── content_rewriter.py      # 内容改写（适配各平台格式）
 ├── content/                 # 内容素材（从 PDF 生成，不推送）
 │   ├── xxx.md               #   从 PDF 提取的 Markdown
 │   └── xxx.png              #   封面图
+├── templates/
+│   └── index.html           # Web 界面 HTML
+├── uploads/                 # 上传的封面图缓存
 ├── platforms/
 │   ├── xiaohongshu.py       # 小红书发布器
 │   ├── baijiahao.py         # 百家号发布器
@@ -163,6 +171,58 @@ social-publisher/
 ├── .env.example             # 环境变量模板
 └── README.md
 ```
+
+## Web 界面
+
+启动 Web 管理界面，支持多平台同时填充、SSE 实时日志：
+
+```bash
+uv run uvicorn server:app --reload --port 8083
+```
+
+打开 http://127.0.0.1:8083/，功能包括：
+
+- **多平台选择**：一次勾选 1~6 个平台，串行填充
+- **手动模式**（默认勾选）：只填充图文不点击发布，填充后 Edge 页面保留供人工检查
+- **自动模式**：填充完成后自动点击发布按钮
+- **封面压缩**：>5MB 自动压缩
+- **内容改写预览**：长文自动适配各平台格式
+- **频率控制**：内置 `rate_limiter` 限制发布频率
+- **发布统计**：`GET /stats` 查看各平台发布计数
+
+### 手动模式工作流程
+
+```
+勾选平台 A,B,C → 点"填充" →
+  Worker A: 连CDP → 开页面 → 模拟浏览 → 填标题/正文 → 断CDP(页面留着) → 退出
+  Worker B: 连CDP → 开页面 → 模拟浏览 → 填标题/正文 → 断CDP(页面留着) → 退出
+  Worker C: 连CDP → 开页面 → 模拟浏览 → 填标题/正文 → 断CDP(页面留着) → 退出
+→ 全部填充完毕，Edge 中 3 个页面就绪，手动逐个发布
+```
+
+## 频率控制
+
+`rate_limiter.py` 控制各平台发布间隔，防止触发风控：
+
+| 平台 | 最小间隔 |
+|------|----------|
+| 小红书 | 30 分钟 |
+| 抖音 | 30 分钟 |
+| 百家号 | 20 分钟 |
+| 头条号 | 30 分钟 |
+| B 站 | 15 分钟 |
+| 微博 | 15 分钟 |
+
+Web 界面和 CLI 均受理频率限制，超频自动跳过。
+
+## 浏览行为模拟
+
+`human_browse.py` 在填充前后模拟真人浏览：
+
+- **填充前** (`browse_before`)：随机滚动页面、鼠标移动、停顿，模拟"看页面再操作"
+- **填充后** (`browse_after`)：回滚到顶部、停留检查、随机点击空白区域，模拟"校对新填内容"
+
+所有平台发布器均已集成。
 
 ## 平台特性
 

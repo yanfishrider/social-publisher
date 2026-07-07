@@ -4,6 +4,7 @@
 """
 from patchright.sync_api import sync_playwright, BrowserContext, Page
 from human_typing import human_type, human_click, jitter
+from human_browse import browse_before, browse_after
 
 
 class ToutiaoPublisher:
@@ -65,6 +66,9 @@ class ToutiaoPublisher:
             if not self._check_login():
                 print("⚠️ 未登录"); return False
             print("✅ 已登录")
+
+            # ── 浏览行为：假装看页面 ──
+            browse_before(self.page)
             
             self._wait_editor()
             self._set_title(title)
@@ -76,6 +80,9 @@ class ToutiaoPublisher:
             if tags:
                 self._set_tags(tags)
             
+            # ── 浏览行为：假装校对 ──
+            browse_after(self.page)
+
             if self.auto_submit:
                 self._submit()
                 print("🎉 发布成功！")

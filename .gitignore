@@ -30,3 +30,4 @@ content/*
 # 大文件/generated
 *.tar.gz
 uploads/
+publish_history.json

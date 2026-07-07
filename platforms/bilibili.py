@@ -4,6 +4,7 @@ B站专栏发布器 — 通过 CDP 连接真实 Edge 浏览器
 """
 from patchright.sync_api import sync_playwright, BrowserContext, Page, Frame
 from human_typing import human_type, human_click, jitter
+from human_browse import browse_before, browse_after
 
 
 class BilibiliPublisher:
@@ -75,11 +76,17 @@ class BilibiliPublisher:
                 print("⚠️ 未登录"); return False
             print("✅ 已登录")
 
+            # ── 浏览行为：假装看页面 ──
+            browse_before(self.page)
+
             self._set_title(title)
             self._set_content(content)
             if tags:
                 self._set_tags(tags)
             
+            # ── 浏览行为：假装校对 ──
+            browse_after(self.page)
+
             if self.auto_submit:
                 self._submit()
                 print("🎉 发布成功！")
