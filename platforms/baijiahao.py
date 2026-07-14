@@ -122,9 +122,15 @@ class BaijiahaoPublisher:
         url = self.page.url
         if "passport.baidu.com" in url or "/login" in url:
             return False
+        # 等待页面完全加载
+        self.page.wait_for_timeout(3000)
+        # 检查是否有编辑器的标题输入框
         if self.page.locator("[data-testid='news-title-input']").count() > 0:
             return True
-        return len(self.page.locator("body").inner_text()) > 100
+        # 备用：页面不在登录页就算已登录
+        if "baijiahao.baidu.com" in url and "login" not in url.lower():
+            return True
+        return False
     
     def _wait_editor(self):
         print("⏳ 等待编辑器渲染...")
@@ -135,7 +141,6 @@ class BaijiahaoPublisher:
     # ── 1. 标题（第 0 个 Lexical editor，最多 64 字）──
     
     def _set_title(self, title: str):
-        title = title[:64]
         print(f"📝 标题: {title}")
         
         editor = self.page.locator("[data-lexical-editor='true']").first

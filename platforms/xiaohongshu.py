@@ -139,14 +139,6 @@ class XhsPublisher:
         print("  ✅")
 
     def _set_title(self, title):
-        if len(title) > 20:
-            cut = title[:20]
-            for sep in [" — ", " - ", " ", "，", "。", "、"]:
-                idx = cut.rfind(sep)
-                if idx > 10:
-                    cut = cut[:idx]
-                    break
-            title = cut
         print(f"📝 标题: {title}")
         el = self.page.locator("input[placeholder*='填写标题']").first
         human_click(self.page, el)

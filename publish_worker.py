@@ -6,10 +6,60 @@
 import sys
 import json
 import traceback
+import time
+
+
+def _do_login(config: dict):
+    """通过 CDP 连接 Edge，打开空白页让用户自行登录"""
+    from patchright.sync_api import sync_playwright
+
+    url = config.get("url", "about:blank")
+
+    pw = None
+    browser = None
+    try:
+        pw = sync_playwright().start()
+        browser = pw.chromium.connect_over_cdp("http://localhost:9222")
+        context = browser.contexts[0]
+        page = context.new_page()
+        page.goto(url, timeout=10000, wait_until="domcontentloaded")
+
+        print(json.dumps({
+            "ok": True,
+            "msg": "Edge 浏览器已打开，请自行前往各平台登录。完成后可关闭该标签页。",
+        }))
+        sys.stdout.flush()
+
+        while True:
+            try:
+                page.title()
+                time.sleep(2)
+            except Exception:
+                break
+
+    except Exception as e:
+        print(json.dumps({"ok": False, "error": f"启动浏览器失败: {e}"}))
+        sys.stdout.flush()
+    finally:
+        if browser:
+            try:
+                browser.close()
+            except Exception:
+                pass
+        if pw:
+            try:
+                pw.stop()
+            except Exception:
+                pass
 
 
 def main():
     config = json.loads(sys.argv[1])
+
+    # 登录模式
+    if config.get("action") == "login":
+        _do_login(config)
+        return
 
     platform = config["platform"]
     title = config["title"]

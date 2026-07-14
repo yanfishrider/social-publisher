@@ -33,3 +33,11 @@ uploads/
 publish_history.json
 .acknowledged
 ANTI_DETECTION.md
+build/
+dist/
+*.spec
+edge-data/
+browser-data/
+output/
+uploads/
+.acknowledged

@@ -14,6 +14,7 @@ h1 { font-size:22px; margin-bottom:20px; color:#1a1a1a; }
   background:#fff; border-radius:8px; padding:20px; margin-bottom:16px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.08);
 }
+.card-title { font-size:14px; font-weight:600; margin-bottom:10px; }
 
 .platform-group { display:flex; flex-wrap:wrap; gap:10px; }
 .platform-group label {
@@ -38,18 +39,42 @@ h1 { font-size:22px; margin-bottom:20px; color:#1a1a1a; }
 
 .actions { display:flex; gap:10px; margin-top:8px; }
 .btn {
-  padding:10px 24px; border:none; border-radius:6px; font-size:14px;
-  cursor:pointer; transition:all 0.2s;
+  padding:8px 16px; border:none; border-radius:6px; font-size:13px;
+  cursor:pointer; transition:all 0.2s; white-space:nowrap;
 }
 .btn-primary { background:#1890ff; color:#fff; }
 .btn-primary:hover { background:#40a9ff; }
 .btn-primary:disabled { background:#b3d8ff; cursor:not-allowed; }
+.btn-success { background:#52c41a; color:#fff; }
+.btn-success:hover { background:#73d13d; }
 .btn-default { background:#f0f0f0; color:#333; }
+.btn-default:hover { background:#e0e0e0; }
+
+.tool-row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:8px; }
+.tool-row:last-child { margin-bottom:0; }
+.tool-msg { font-size:12px; color:#52c41a; margin-top:6px; }
+.tool-msg.error { color:#ff4d4f; }
+.tool-msg.info { color:#1890ff; }
+
+/* 登录下拉 */
+.dropdown { position:relative; display:inline-block; }
+.dropdown-menu {
+  display:none; position:absolute; top:100%; left:0;
+  background:#fff; border:1px solid #ddd; border-radius:6px;
+  box-shadow:0 4px 12px rgba(0,0,0,0.1); z-index:10; min-width:140px;
+}
+.dropdown-menu button {
+  display:block; width:100%; padding:8px 16px; border:none;
+  background:none; cursor:pointer; font-size:13px; text-align:left;
+}
+.dropdown-menu button:hover { background:#f5f5f5; }
+.dropdown.open .dropdown-menu { display:block; }
 
 .log-panel {
   background:#1a1a2e; color:#a0ffa0; border-radius:8px;
   padding:14px; font-size:13px; font-family:"Consolas","Microsoft YaHei",monospace;
   max-height:400px; overflow-y:auto; line-height:1.6;
+  user-select:text; -webkit-user-select:text;
 }
 .log-line { white-space:pre-wrap; word-break:break-all; }
 .log-line.error { color:#ff6b6b; }
@@ -64,11 +89,37 @@ h1 { font-size:22px; margin-bottom:20px; color:#1a1a1a; }
 </head>
 <body>
 <div class="container">
-  <h1>📤 社交发布工具</h1>
+  <h1>社交发布工具</h1>
+
+  <!-- 工具区 -->
+  <div class="card">
+    <div class="card-title">工具</div>
+
+    <div class="tool-row">
+      <input type="file" id="pdfFile" accept=".pdf" style="display:none" onchange="convertFile('pdf')">
+      <button class="btn btn-default" onclick="document.getElementById('pdfFile').click()">选择 PDF</button>
+      <button class="btn btn-primary" id="pdfBtn" onclick="convertFile('pdf')" disabled>PDF → MD</button>
+      <span id="pdfName" style="font-size:12px;color:#999;"></span>
+    </div>
+
+    <div class="tool-row">
+      <input type="file" id="docxFile" accept=".docx,.doc" style="display:none" onchange="convertFile('docx')">
+      <button class="btn btn-default" onclick="document.getElementById('docxFile').click()">选择 Word</button>
+      <button class="btn btn-primary" id="docxBtn" onclick="convertFile('docx')" disabled>Word → MD</button>
+      <span id="docxName" style="font-size:12px;color:#999;"></span>
+    </div>
+
+    <div class="tool-row">
+      <button class="btn btn-success" onclick="openCDPBrowser()">打开 CDP 浏览器</button>
+      <span style="font-size:12px;color:#999;">Edge 窗口弹出后，自行前往各平台登录</span>
+    </div>
+
+    <div id="toolMsg" class="tool-msg"></div>
+  </div>
 
   <!-- 平台选择 -->
   <div class="card">
-    <div style="font-size:14px;font-weight:600;margin-bottom:10px;">发布平台</div>
+    <div class="card-title">发布平台</div>
     <div class="platform-group" id="platformGroup">
       <label><input type="checkbox" value="weibo" checked><span>微博</span></label>
       <label><input type="checkbox" value="xiaohongshu"><span>小红书</span></label>
@@ -89,9 +140,9 @@ h1 { font-size:22px; margin-bottom:20px; color:#1a1a1a; }
     <div class="form-row">
       <label>文章内容</label>
       <div style="display:flex;gap:10px;margin-bottom:8px;">
-        <button class="btn btn-default" onclick="document.getElementById('contentFile').click()" style="font-size:13px;padding:6px 14px;">📎 选择 MD 文件</button>
+        <button class="btn btn-default" onclick="document.getElementById('contentFile').click()" style="font-size:13px;padding:6px 14px;">选择 MD 文件</button>
         <input type="file" id="contentFile" accept=".md,.txt" style="display:none" onchange="onContentFile(this)">
-        <button class="btn btn-default" onclick="toggleTextInput()" style="font-size:13px;padding:6px 14px;">✏️ 直接粘贴</button>
+        <button class="btn btn-default" onclick="toggleTextInput()" style="font-size:13px;padding:6px 14px;">直接粘贴</button>
       </div>
       <div id="textInputArea" style="display:none;">
         <textarea id="contentText" placeholder="直接粘贴文章内容..."></textarea>
@@ -117,24 +168,98 @@ h1 { font-size:22px; margin-bottom:20px; color:#1a1a1a; }
     </div>
 
     <div class="form-row" id="previewRow" style="display:none;">
-      <label>📄 改写预览</label>
+      <label>改写预览</label>
       <div class="preview-area" id="previewContent"></div>
     </div>
 
     <div class="actions">
-      <button class="btn btn-default" onclick="preview()">👁️ 预览改写</button>
-      <button class="btn btn-primary" id="publishBtn" onclick="publish()">📝 填充</button>
+      <button class="btn btn-default" onclick="preview()">预览改写</button>
+      <button class="btn btn-primary" id="publishBtn" onclick="publish()">填充</button>
     </div>
   </div>
 
   <!-- 日志 -->
   <div class="card" id="logCard" style="display:none;">
-    <div style="font-size:14px;font-weight:600;margin-bottom:8px;">📋 发布日志</div>
+    <div class="card-title">发布日志</div>
     <div class="log-panel" id="logPanel"></div>
   </div>
 </div>
 
 <script>
+// ── 文件转换 ──
+let pendingFile = null;
+
+function setFileState(type, file) {
+  if (!file) return;
+  pendingFile = file;
+  const nameSpan = document.getElementById(type === 'pdf' ? 'pdfName' : 'docxName');
+  const btn = document.getElementById(type === 'pdf' ? 'pdfBtn' : 'docxBtn');
+  nameSpan.textContent = file.name;
+  btn.disabled = false;
+}
+
+// 通过隐藏 input 的 onchange 事件触发
+document.getElementById('pdfFile').addEventListener('change', function() {
+  if (this.files[0]) setFileState('pdf', this.files[0]);
+});
+document.getElementById('docxFile').addEventListener('change', function() {
+  if (this.files[0]) setFileState('docx', this.files[0]);
+});
+
+async function convertFile(type) {
+  const inputId = type === 'pdf' ? 'pdfFile' : 'docxFile';
+  const btnId = type === 'pdf' ? 'pdfBtn' : 'docxBtn';
+  const input = document.getElementById(inputId);
+  const btn = document.getElementById(btnId);
+  const file = input.files[0];
+
+  if (!file) return;
+
+  btn.disabled = true;
+  btn.textContent = '转换中...';
+  showToolMsg('info', `正在转换 ${file.name}...`);
+
+  const fd = new FormData();
+  fd.append('file', file);
+
+  try {
+    const resp = await fetch('/api/convert/' + type, { method:'POST', body: fd });
+    const data = await resp.json();
+    if (data.ok) {
+      showToolMsg('success', `已转换: ${data.filename} (${data.size_kb} KB) → 保存在 output/ 目录`);
+    } else {
+      showToolMsg('error', `转换失败: ${data.error}`);
+    }
+  } catch(e) {
+    showToolMsg('error', `请求失败: ${e.message}`);
+  }
+
+  btn.textContent = type === 'pdf' ? 'PDF → MD' : 'Word → MD';
+  btn.disabled = false;
+  input.value = '';
+  document.getElementById(type === 'pdf' ? 'pdfName' : 'docxName').textContent = '';
+}
+
+function showToolMsg(cls, text) {
+  const el = document.getElementById('toolMsg');
+  el.className = 'tool-msg ' + cls;
+  el.textContent = text;
+  setTimeout(() => { if (el.textContent === text) el.textContent = ''; }, 8000);
+}
+
+// ── CDP 浏览器 ──
+async function openCDPBrowser() {
+  showToolMsg('info', '正在打开 Edge 浏览器...');
+  try {
+    const resp = await fetch('/api/login', { method:'POST' });
+    const data = await resp.json();
+    showToolMsg(data.ok ? 'success' : 'error', data.msg || data.error);
+  } catch(e) {
+    showToolMsg('error', `请求失败: ${e.message}`);
+  }
+}
+
+// ── 发布功能 ──
 let contentFileName = '';
 
 function onContentFile(input) {
@@ -142,12 +267,28 @@ function onContentFile(input) {
     contentFileName = input.files[0].name;
     document.getElementById('contentHint').textContent = '已选择: ' + contentFileName;
     document.getElementById('textInputArea').style.display = 'none';
+    // 自动提取 # 标题
+    extractTitleFromFile(input.files[0]);
   }
+}
+
+async function extractTitleFromFile(file) {
+  try {
+    const text = await file.text();
+    const m = text.match(/^# (.+)/m);
+    if (m) {
+      const titleInput = document.getElementById('title');
+      if (!titleInput.value.trim()) {
+        let title = m[1].trim();
+        titleInput.value = title;
+      }
+    }
+  } catch(e) { /* 忽略，用户可手动填 */ }
 }
 
 function onManualChange() {
   const manual = document.getElementById('manualMode').checked;
-  document.getElementById('publishBtn').textContent = manual ? '📝 填充' : '🚀 发布';
+  document.getElementById('publishBtn').textContent = manual ? '填充' : '发布';
 }
 
 function toggleTextInput() {
@@ -157,6 +298,12 @@ function toggleTextInput() {
     document.getElementById('contentFile').value = '';
     contentFileName = '';
     document.getElementById('contentHint').textContent = '';
+    setTimeout(() => {
+      const ta = document.getElementById('contentText');
+      ta.focus();
+      // pywebview 可能拦截键盘事件，手动阻止
+      ta.onkeydown = function(e) { e.stopPropagation(); };
+    }, 100);
   }
 }
 
@@ -217,12 +364,10 @@ async function publish() {
 
   const manual = document.getElementById('manualMode').checked;
 
-  // 显示日志区
   document.getElementById('logCard').style.display = 'block';
   document.getElementById('logPanel').innerHTML = '';
   document.getElementById('publishBtn').disabled = true;
 
-  // 一次请求发全部平台
   const fd = getFormData();
   fd.append('platforms', platforms.join(','));
 
@@ -240,7 +385,7 @@ async function publish() {
           try {
             const data = JSON.parse(line.slice(6));
             const cls = data.error ? 'error' : (data.done ? 'success' : '');
-            addLog((data.error ? '❌ ' : '') + data.msg, cls);
+            addLog(data.msg, cls);
           } catch(e) {
             addLog(line.slice(6));
           }
@@ -252,30 +397,11 @@ async function publish() {
   }
 
   if (manual) {
-    addLog('\n⏸️  请在浏览器中手动点击各平台发布按钮', 'success');
+    addLog('请在浏览器中手动点击各平台发布按钮', 'success');
   } else {
-    addLog('\n✅ 全部发布任务完成', 'success');
+    addLog('全部发布任务完成', 'success');
   }
   document.getElementById('publishBtn').disabled = false;
-}
-
-async function finishPublish() {
-  addLog('✅ 全部完成', 'success');
-  document.getElementById('finishBtn').style.display = 'none';
-}
-
-function showManualFinish() {
-  let btn = document.getElementById('finishBtn');
-  if (!btn) {
-    btn = document.createElement('button');
-    btn.id = 'finishBtn';
-    btn.className = 'btn btn-primary';
-    btn.textContent = '✅ 已完成手动发布，关闭页面';
-    btn.onclick = finishPublish;
-    btn.style.marginTop = '8px';
-    document.getElementById('logCard').appendChild(btn);
-  }
-  btn.style.display = 'block';
 }
 </script>
 </body>

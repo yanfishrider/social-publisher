@@ -75,8 +75,10 @@ def convert(docx_path: str | Path, output_path: str | Path | None = None) -> Pat
             print(f"✅ 已生成: {output_path}")
             return output_path
         except ImportError:
-            print("  pip install mammoth 后重试")
-            sys.exit(1)
+            # 无 mammoth，直接提取纯文本
+            print("  无 mammoth，直接提取纯文本...")
+            _extract_plain_text(docx_path, output_path)
+            return output_path
         except Exception as e2:
             # 最后尝试直接解压提取纯文本
             print(f"  mammoth 也失败: {e2}")

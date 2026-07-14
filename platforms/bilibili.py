@@ -124,7 +124,6 @@ class BilibiliPublisher:
                     pass
 
     def _set_title(self, title: str):
-        title = title[:30]
         print(f"📝 标题: {title}")
         frame = self._editor_frame
         el = frame.locator("textarea[placeholder*='标题']").first

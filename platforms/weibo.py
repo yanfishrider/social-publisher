@@ -85,6 +85,7 @@ class WeiboPublisher:
             browse_before(self.page)
 
             self._wait_editor()
+            self._click_new_article()
             self._set_title(title)
             distract_think(self.page, duration_ms=random.randint(1000, 3000))
             self._set_content(content)
@@ -123,8 +124,18 @@ class WeiboPublisher:
         self.page.wait_for_timeout(2000)
         print("  ✅ 编辑器已就绪")
 
+    def _click_new_article(self):
+        """点击「写文章」按钮进入编辑模式"""
+        print("📝 点击「写文章」按钮...")
+        btn = self.page.locator("button:has-text('写文章')").first
+        if btn.count() == 0:
+            print("  ⚠️ 未找到「写文章」按钮，可能已在编辑模式，跳过")
+            return
+        human_click(self.page, btn)
+        self.page.wait_for_timeout(jitter(2000, 20))
+        print("  ✅")
+
     def _set_title(self, title: str):
-        title = title[:32]
         print(f"📝 标题: {title}")
         el = self.page.locator("textarea[placeholder='请输入标题']").first
         human_click(self.page, el)
@@ -182,7 +193,7 @@ class WeiboPublisher:
             upload_btn.click(force=True)
         fc.value.set_files(image_path)
         # 等图片加载完成再选中
-        self.page.wait_for_timeout(4000)
+        self.page.wait_for_timeout(6000)  # 等图片加载完成再选中
 
         # 图片上有 select-mask 遮罩，用 force=True 或点父容器
         imgs = self.page.locator(".n-modal img:not([class*='avatar'])")

@@ -143,7 +143,6 @@ class DouyinPublisher:
         print("  ✅ 已进入编辑页")
 
     def _set_title(self, title: str):
-        title = title[:20]
         print(f"📝 标题: {title}")
         el = self.page.locator("input[placeholder='添加作品标题']").first
         human_click(self.page, el)
@@ -158,8 +157,7 @@ class DouyinPublisher:
         human_click(self.page, editor)
         self.page.wait_for_timeout(jitter(500))
 
-        # 抖音限制 ~1000 字
-        human_type(self.page, content[:1000], "byte_dance")
+        human_type(self.page, content, "byte_dance")
 
         print(f"  ✅ 输入完成")
 

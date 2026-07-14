@@ -22,8 +22,22 @@ from safety_gate import check_acknowledgment
 
 app = FastAPI(title="社交发布工具")
 
-# ── 启动时检查 ──
 check_acknowledgment()
+
+# PyInstaller 打包后的资源路径
+_BASE_DIR = Path(getattr(sys, '_MEIPASS', Path(__file__).parent))
+
+# 输出目录：exe 同目录下的 output/ 文件夹
+if getattr(sys, 'frozen', False):
+    OUTPUT_DIR = Path(sys.executable).parent / "output"
+else:
+    OUTPUT_DIR = Path(__file__).parent / "output"
+
+
+def _resolve_path(relative: str) -> Path:
+    """解析资源文件路径，兼容开发环境和 PyInstaller 打包"""
+    return _BASE_DIR / relative
+
 
 PUBLISHERS = {
     "weibo":      ("weibo",      rewrite_for_article, 32),
@@ -38,7 +52,7 @@ PUBLISHERS = {
 
 @app.get("/", response_class=HTMLResponse)
 async def index():
-    return Path("templates/index.html").read_text(encoding="utf-8")
+    return _resolve_path("templates/index.html").read_text(encoding="utf-8")
 
 
 # ── 预览 ──
@@ -59,7 +73,10 @@ async def preview(
 
     _, rewriter, _ = PUBLISHERS.get(platform, PUBLISHERS["weibo"])
 
-    if len(content) > 500:
+    # 小红书 1000 字才触发改写，其余平台 500 字
+    xhs_threshold = 1000 if platform == "xiaohongshu" else 500
+
+    if len(content) > xhs_threshold:
         if platform in ("xiaohongshu", "douyin"):
             result = rewriter(content, title)
         else:
@@ -118,19 +135,19 @@ async def publish(
 
         _, rewriter, max_title = PUBLISHERS.get(platform, PUBLISHERS["weibo"])
 
-        # 标题截断
-        title_used = title[:max_title] if len(title) > max_title else title
+        title_used = title
 
-        # 内容改写
-        if len(content) > 500:
-            send("📝 内容过长，自动改写...", platform=platform)
-            if platform in ("xiaohongshu", "douyin"):
-                rewritten = rewriter(content, title_used)
-            else:
-                rewritten = rewriter(content, title_used)
+        # 所有内容都格式化（去 Markdown 符号），小红书/抖音额外截断
+        threshold = 1000 if platform == "xiaohongshu" else 500
+        if platform in ("xiaohongshu", "douyin") and len(content) > threshold:
+            rewritten = rewriter(content, title_used)
             body = rewritten["body"]
+            title_used = rewritten.get("title", title_used)
         else:
-            body = content
+            # 百家号/头条号等：全文格式化
+            rewritten = rewrite_for_article(content)
+            body = rewritten["body"]
+            title_used = rewritten.get("title", title_used) or title_used
 
         send(f"📄 标题: {title_used} | 正文: {len(body)}字", platform=platform)
 
@@ -159,17 +176,27 @@ async def publish(
             "manual": manual,
         }
 
-        worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "publish_worker.py")
-
         send("🔗 启动发布子进程...", platform=platform)
+
+        # 兼容 PyInstaller 打包和开发环境
+        if getattr(sys, 'frozen', False):
+            # PyInstaller 打包：调用自身 exe 的 --worker 模式
+            cmd = [sys.executable, "--worker", json.dumps(worker_config, ensure_ascii=False)]
+            cwd = os.path.dirname(sys.executable)
+        else:
+            # 开发环境：调用 publish_worker.py
+            worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "publish_worker.py")
+            cmd = [sys.executable, worker_path, json.dumps(worker_config, ensure_ascii=False)]
+            cwd = os.path.dirname(os.path.abspath(__file__))
+
         proc = subprocess.Popen(
-            [sys.executable, worker_path, json.dumps(worker_config, ensure_ascii=False)],
+            cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             stdin=subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
-            cwd=os.path.dirname(os.path.abspath(__file__)),
+            cwd=cwd,
         )
 
         # 逐行读取子进程输出
@@ -219,6 +246,103 @@ async def publish(
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
+
+
+# ── 文件转换 ──
+
+@app.post("/api/convert/pdf")
+async def convert_pdf(file: UploadFile):
+    """上传 PDF → 转换为 MD，输出到 output/ 目录"""
+    import pdf_to_markdown
+
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    safe_name = Path(file.filename).stem
+    input_path = OUTPUT_DIR / f"_{safe_name}.pdf"
+    output_path = OUTPUT_DIR / f"{safe_name}.md"
+
+    content = await file.read()
+    input_path.write_bytes(content)
+
+    try:
+        info = pdf_to_markdown.diagnose(input_path)
+        if not info["has_text"]:
+            input_path.unlink(missing_ok=True)
+            return {
+                "ok": False,
+                "error": "PDF 为扫描件/图片型，无法提取文字。请使用 OCR 工具处理。",
+                "info": {k: v for k, v in info.items() if k != "text_per_page"},
+            }
+
+        import pymupdf4llm
+        md_text = pymupdf4llm.to_markdown(str(input_path))
+        output_path.write_text(md_text, encoding="utf-8")
+        input_path.unlink(missing_ok=True)
+
+        return {
+            "ok": True,
+            "output": str(output_path),
+            "filename": output_path.name,
+            "size_kb": round(output_path.stat().st_size / 1024, 1),
+            "pages": info["pages"],
+        }
+    except Exception as e:
+        input_path.unlink(missing_ok=True)
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/api/convert/docx")
+async def convert_docx(file: UploadFile):
+    """上传 DOCX → 转换为 MD，输出到 output/ 目录"""
+    from docx_to_markdown import convert as docx_convert
+
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    safe_name = Path(file.filename).stem
+    input_path = OUTPUT_DIR / f"_{safe_name}.docx"
+    output_path = OUTPUT_DIR / f"{safe_name}.md"
+
+    content = await file.read()
+    input_path.write_bytes(content)
+
+    try:
+        docx_convert(input_path, output_path)
+        input_path.unlink(missing_ok=True)
+        return {
+            "ok": True,
+            "output": str(output_path),
+            "filename": output_path.name,
+            "size_kb": round(output_path.stat().st_size / 1024, 1),
+        }
+    except Exception as e:
+        input_path.unlink(missing_ok=True)
+        return {"ok": False, "error": str(e)}
+
+
+# ── 平台登录 ──
+
+@app.post("/api/login")
+async def login_platform():
+    """打开 CDP 浏览器（连接 Edge），用户自行前往各平台登录"""
+    login_config = {"action": "login", "url": "about:blank"}
+
+    if getattr(sys, 'frozen', False):
+        cmd = [sys.executable, "--login", json.dumps(login_config, ensure_ascii=False)]
+        cwd = os.path.dirname(sys.executable)
+    else:
+        worker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "publish_worker.py")
+        cmd = [sys.executable, worker_path, json.dumps(login_config, ensure_ascii=False)]
+        cwd = os.path.dirname(os.path.abspath(__file__))
+
+    subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        stdin=subprocess.DEVNULL,
+        text=True,
+        encoding="utf-8",
+        cwd=cwd,
+    )
+
+    return {"ok": True, "msg": "Edge 浏览器已打开，请自行前往各平台登录"}
 
 
 # ── 频率统计 ──

@@ -114,19 +114,24 @@ def _similar_key(ch: str) -> str:
 def human_type(page, content: str, profile: str = "standard"):
     """
     模拟真人逐字键入 — 使用 keyboard.type() 产生真实 keydown/keyup 事件。
-    每个字独立随机延迟（对数正态分布）。
+    按 \n 分段，段间用 Enter 换行。
     """
     cfg = PROFILES.get(profile, PROFILES["standard"])
-    paragraphs = [p for p in content.split("\n") if p.strip()]
+    paragraphs = [p for p in content.replace("\r\n", "\n").split("\n")]
     total = len(paragraphs)
     next_think = random.randint(*cfg.think_every)
 
     for i, paragraph in enumerate(paragraphs):
+        if not paragraph.strip():
+            page.keyboard.press("Enter")
+            page.wait_for_timeout(jitter(200))
+            continue
+
         _type_paragraph(page, paragraph, cfg)
 
         if i < total - 1:
             page.wait_for_timeout(_ri(cfg.para_pause))
-            page.keyboard.press("Shift+Enter")
+            page.keyboard.press("Enter")
             page.wait_for_timeout(jitter(200))
 
         if (i + 1) == next_think:
@@ -221,21 +226,27 @@ def _char_to_pinyin(ch: str) -> str:
 
 def human_type_on(page, locator, content: str, profile: str = "xhs"):
     """
-    在指定 locator 上逐字输入（小红书等需要先 focus 再 type 的平台）。
-    先用 keyboard.type() 产生真实按键，如果平台用 contenteditable
-    则通过 CDP 补发 composition 事件模拟 IME。
+    在指定 locator 上逐字输入。
+    按 \n 分段，段间用 Enter 换行。
     """
     cfg = PROFILES.get(profile, PROFILES["xhs"])
-    paragraphs = [p for p in content.split("\n") if p.strip()]
+    # 按换行分段，保留非空行
+    paragraphs = [p for p in content.replace("\r\n", "\n").split("\n")]
     total = len(paragraphs)
     next_think = random.randint(*cfg.think_every)
 
     for i, paragraph in enumerate(paragraphs):
+        if not paragraph.strip():
+            # 空行 → 多按一次 Enter（段落间距）
+            page.keyboard.press("Enter")
+            page.wait_for_timeout(jitter(200))
+            continue
+
         _type_paragraph_on(page, locator, paragraph, cfg)
 
         if i < total - 1:
             page.wait_for_timeout(_ri(cfg.para_pause))
-            page.keyboard.press("Shift+Enter")
+            page.keyboard.press("Enter")
             page.wait_for_timeout(jitter(200))
 
         if (i + 1) == next_think:
