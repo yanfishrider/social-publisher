@@ -1,3 +1,5 @@
+
+
 # social-publisher
 
 多平台社交媒体自动发布工具，基于 Playwright + CDP 连接真实浏览器，绕过反爬检测。
@@ -48,6 +50,7 @@
 uv sync
 
 # 2. 启动 Edge 调试模式（必须，用于 CDP 连接）
+# 端口必须为 9222：平台代码固定通过 http://localhost:9222 连接
 "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --remote-debugging-port=9222
 
 # 3. 手动登录各平台（只需一次）
